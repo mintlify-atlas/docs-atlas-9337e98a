@@ -1,0 +1,96 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "ts-caldav",
+  "projectDescription": "A lightweight and robust CalDAV client for Node.js applications, written in TypeScript.",
+  "theme": "palm",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#2563EB",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/authentication",
+              "concepts/calendars",
+              "concepts/events",
+              "concepts/todos",
+              "concepts/synchronization"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/timezone-support",
+              "guides/recurrence",
+              "guides/caching",
+              "guides/supported-servers"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/caldav-client",
+              "api/calendar-operations",
+              "api/event-operations",
+              "api/todo-operations",
+              "api/sync-operations"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Credential validation with CalDAV servers",
+    "Automatic CalDAV endpoint discovery",
+    "Fetch calendar homes and individual calendars with color support",
+    "List, create, update, and delete events and todos",
+    "Detect event changes using getctag and etag",
+    "Efficient sync with diff-based updates",
+    "Full TypeScript support with type safety",
+    "Recurring events and timezone support",
+    "Works in Node.js, browser, and React Native environments"
+  ],
+  "publicApiSurface": [
+    "CalDAVClient.create()",
+    "CalDAVClient.createFromCache()",
+    "getCalendars()",
+    "getEvents()",
+    "createEvent()",
+    "updateEvent()",
+    "deleteEvent()",
+    "syncChanges()",
+    "getEventsByHref()",
+    "getETag()",
+    "getTodos()",
+    "getTodosByHref()",
+    "createTodo()",
+    "updateTodo()",
+    "deleteTodo()",
+    "syncTodoChanges()",
+    "exportCache()"
+  ]
+}
