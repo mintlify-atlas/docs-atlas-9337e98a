@@ -259,7 +259,7 @@ interface SyncTodosResult {
 ## Complete Sync Example
 
 ```typescript
-import { CalDAVClient, EventRef } from 'ts-caldav';
+import { CalDAVClient } from 'ts-caldav';
 
 class CalendarSync {
   private client: CalDAVClient;
@@ -276,7 +276,7 @@ class CalendarSync {
     const ctag = await this.client.getCtag(this.calendarUrl);
     
     // Store events and ctag locally
-    const eventRefs: EventRef[] = events.map(e => ({
+    const eventRefs = events.map(e => ({
       href: e.href,
       etag: e.etag
     }));
