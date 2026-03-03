@@ -1,0 +1,377 @@
+---
+title: Installation
+description: Install and configure ts-caldav for your JavaScript or TypeScript project
+---
+
+# Installation
+
+ts-caldav is a lightweight CalDAV client with zero native dependencies, making it easy to install and use across any JavaScript environment.
+
+## Package Manager Installation
+
+Install ts-caldav using your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install ts-caldav
+```
+
+```bash yarn
+yarn add ts-caldav
+```
+
+```bash pnpm
+pnpm add ts-caldav
+```
+</CodeGroup>
+
+## Dependencies
+
+ts-caldav automatically installs these peer dependencies:
+
+- **axios** - HTTP client for CalDAV requests
+- **ical.js** - iCalendar parsing and generation
+- **fast-xml-parser** - XML parsing for CalDAV responses
+- **uuid** - UUID generation for event identifiers
+- **base-64** - Basic authentication encoding
+
+All dependencies are pure JavaScript with no native modules, ensuring compatibility across platforms.
+
+## TypeScript Configuration
+
+ts-caldav is written in TypeScript and includes complete type definitions out of the box. No additional `@types` packages are needed.
+
+### TypeScript Project Setup
+
+For the best development experience, ensure your `tsconfig.json` includes these settings:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "commonjs",
+    "lib": ["ES2017"],
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "strict": true
+  }
+}
+```
+
+<Info>
+ts-caldav requires TypeScript 4.0 or higher for full type inference support.
+</Info>
+
+### Type Imports
+
+Import types alongside the client:
+
+```typescript
+import { CalDAVClient } from "ts-caldav";
+import type {
+  CalDAVOptions,
+  Calendar,
+  Event,
+  Todo,
+  Alarm,
+  RecurrenceRule,
+} from "ts-caldav";
+```
+
+## Platform-Specific Setup
+
+### Node.js
+
+ts-caldav works with Node.js 14 and higher:
+
+```typescript
+import { CalDAVClient } from "ts-caldav";
+
+// For CommonJS environments:
+const { CalDAVClient } = require("ts-caldav");
+
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "user",
+    password: "pass",
+  },
+});
+```
+
+<Note>
+If using CommonJS, you may need to use `.then()` instead of `await` at the top level, or wrap your code in an async function.
+</Note>
+
+### Browser
+
+ts-caldav works in modern browsers (Chrome, Firefox, Safari, Edge):
+
+```typescript
+import { CalDAVClient } from "ts-caldav";
+
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "user",
+    password: "pass",
+  },
+});
+```
+
+<Warning>
+**CORS Considerations**: CalDAV servers may not have CORS enabled. For browser-based applications, you may need to:
+
+1. Use a proxy server that adds CORS headers
+2. Configure your CalDAV server to allow cross-origin requests
+3. Use a browser extension for development that disables CORS (not recommended for production)
+
+For production apps, it's recommended to proxy CalDAV requests through your backend server.
+</Warning>
+
+### React Native
+
+ts-caldav is fully compatible with React Native:
+
+```typescript
+import { CalDAVClient } from "ts-caldav";
+
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "user",
+    password: "pass",
+  },
+});
+```
+
+<Tip>
+React Native includes a polyfill for XMLHttpRequest which axios uses under the hood, so no additional configuration is needed.
+</Tip>
+
+### Webpack/Vite/Build Tools
+
+ts-caldav works seamlessly with modern bundlers:
+
+**Vite:**
+```typescript
+import { CalDAVClient } from "ts-caldav";
+// No additional configuration needed
+```
+
+**Webpack:**
+```typescript
+import { CalDAVClient } from "ts-caldav";
+// No additional configuration needed
+```
+
+**Next.js:**
+```typescript
+import { CalDAVClient } from "ts-caldav";
+
+// Use in API routes or server components:
+export default async function handler(req, res) {
+  const client = await CalDAVClient.create({ /* ... */ });
+  const calendars = await client.getCalendars();
+  res.status(200).json({ calendars });
+}
+```
+
+## Environment Variables
+
+For security, store credentials in environment variables:
+
+```bash .env
+CALDAV_BASE_URL=https://caldav.icloud.com
+CALDAV_USERNAME=your-username@icloud.com
+CALDAV_PASSWORD=your-app-specific-password
+```
+
+Then use them in your code:
+
+```typescript
+import { CalDAVClient } from "ts-caldav";
+
+const client = await CalDAVClient.create({
+  baseUrl: process.env.CALDAV_BASE_URL,
+  auth: {
+    type: "basic",
+    username: process.env.CALDAV_USERNAME,
+    password: process.env.CALDAV_PASSWORD,
+  },
+});
+```
+
+<Warning>
+Never commit credentials to version control. Always use environment variables or secure secret management systems.
+</Warning>
+
+## Authentication Methods
+
+ts-caldav supports two authentication methods:
+
+### Basic Authentication
+
+Most CalDAV servers support HTTP Basic Authentication:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "your-username",
+    password: "your-password",
+  },
+});
+```
+
+<Info>
+Many providers (Google, iCloud, Fastmail) require app-specific passwords instead of your main account password. Check your provider's security settings to generate one.
+</Info>
+
+### OAuth2 Authentication
+
+For OAuth2-enabled servers:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "oauth",
+    accessToken: "your-oauth-access-token",
+  },
+});
+```
+
+<Note>
+ts-caldav does not handle the OAuth2 flow itself. You need to obtain the access token using a separate OAuth2 library before creating the client.
+</Note>
+
+## Configuration Options
+
+Customize the client with these options:
+
+```typescript
+const client = await CalDAVClient.create({
+  // Required: Base URL of the CalDAV server
+  baseUrl: "https://caldav.example.com",
+  
+  // Required: Authentication credentials
+  auth: {
+    type: "basic",
+    username: "user",
+    password: "pass",
+  },
+  
+  // Optional: Request timeout in milliseconds (default: 5000)
+  requestTimeout: 10000,
+  
+  // Optional: Enable request logging for debugging (default: false)
+  logRequests: true,
+  
+  // Optional: Custom product identifier for iCalendar data
+  prodId: "-//My Company//My Calendar App//EN",
+  
+  // Optional: Additional HTTP headers
+  headers: {
+    "User-Agent": "MyCalendarApp/1.0",
+  },
+});
+```
+
+### Configuration Reference
+
+| Option | Type | Required | Default | Description |
+|:-------|:-----|:---------|:--------|:------------|
+| `baseUrl` | `string` | Yes | - | CalDAV server base URL |
+| `auth` | `AuthOptions` | Yes | - | Authentication credentials |
+| `requestTimeout` | `number` | No | `5000` | Request timeout in milliseconds |
+| `logRequests` | `boolean` | No | `false` | Enable HTTP request logging |
+| `prodId` | `string` | No | `"-//ts-caldav.//CalDAV Client//EN"` | Product identifier for iCalendar data |
+| `headers` | `AxiosHeaders` | No | `{}` | Additional HTTP headers |
+
+## Verifying Installation
+
+Test your installation with this simple script:
+
+```typescript test-installation.ts
+import { CalDAVClient } from "ts-caldav";
+
+async function testInstallation() {
+  try {
+    const client = await CalDAVClient.create({
+      baseUrl: process.env.CALDAV_BASE_URL || "https://caldav.example.com",
+      auth: {
+        type: "basic",
+        username: process.env.CALDAV_USERNAME || "user",
+        password: process.env.CALDAV_PASSWORD || "pass",
+      },
+      logRequests: true,
+    });
+
+    console.log("✅ ts-caldav installed and configured correctly!");
+    console.log(`Calendar home: ${client.getCalendarHome()}`);
+    
+    const calendars = await client.getCalendars();
+    console.log(`Found ${calendars.length} calendars`);
+    
+  } catch (error) {
+    console.error("❌ Installation test failed:", error.message);
+  }
+}
+
+testInstallation();
+```
+
+Run it with:
+
+<CodeGroup>
+```bash ts-node
+ts-node test-installation.ts
+```
+
+```bash tsx
+tsx test-installation.ts
+```
+
+```bash node
+node --loader ts-node/esm test-installation.ts
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart Tutorial"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first CalDAV integration in minutes
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api/caldav-client"
+  >
+    Explore all available methods and types
+  </Card>
+  <Card
+    title="Core Concepts"
+    icon="book-open"
+    href="/concepts/authentication"
+  >
+    Learn about authentication and events
+  </Card>
+  <Card
+    title="Supported Servers"
+    icon="wrench"
+    href="/guides/supported-servers"
+  >
+    See which CalDAV servers are supported
+  </Card>
+</CardGroup>

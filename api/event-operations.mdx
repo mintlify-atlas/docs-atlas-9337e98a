@@ -1,0 +1,396 @@
+---
+title: 'Event Operations'
+description: 'CRUD operations for CalDAV events'
+---
+
+## Overview
+
+Event operations provide methods to create, read, update, and delete calendar events on a CalDAV server.
+
+## Methods
+
+### getEvents()
+
+Fetches all events from a specific calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar to fetch events from
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional parameters for fetching events
+  
+  <Accordion title="Options Properties">
+    <ParamField path="start" type="Date">
+      Start date for the time range filter. Defaults to current date.
+    </ParamField>
+    
+    <ParamField path="end" type="Date">
+      End date for the time range filter. Defaults to 3 weeks from now.
+    </ParamField>
+    
+    <ParamField path="all" type="boolean">
+      If `true`, fetches all events without time range filtering. Defaults to `false`.
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<Event[]>" type="Event[]">
+  A promise that resolves to an array of Event objects
+</ResponseField>
+
+```typescript
+// Get events for the next 3 weeks (default)
+const events = await client.getEvents(calendarUrl);
+
+// Get events for a specific time range
+const startDate = new Date('2024-01-01');
+const endDate = new Date('2024-01-31');
+const januaryEvents = await client.getEvents(calendarUrl, {
+  start: startDate,
+  end: endDate
+});
+
+// Get all events without time filtering
+const allEvents = await client.getEvents(calendarUrl, { all: true });
+```
+
+### createEvent()
+
+Creates a new event in the specified calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar to create the event in
+</ParamField>
+
+<ParamField path="eventData" type="PartialBy<Event, 'uid' | 'href' | 'etag'>" required>
+  The event data. The `uid`, `href`, and `etag` fields are optional and will be auto-generated if not provided.
+  
+  <Accordion title="Event Properties">
+    <ParamField path="summary" type="string" required>
+      The event title/summary
+    </ParamField>
+    
+    <ParamField path="start" type="Date" required>
+      The event start date/time
+    </ParamField>
+    
+    <ParamField path="end" type="Date" required>
+      The event end date/time
+    </ParamField>
+    
+    <ParamField path="description" type="string">
+      Detailed description of the event
+    </ParamField>
+    
+    <ParamField path="location" type="string">
+      Event location
+    </ParamField>
+    
+    <ParamField path="status" type="EventStatus">
+      Event status: `"TENTATIVE"`, `"CONFIRMED"`, or `"CANCELLED"`
+    </ParamField>
+    
+    <ParamField path="wholeDay" type="boolean">
+      If `true`, the event is an all-day event
+    </ParamField>
+    
+    <ParamField path="recurrenceRule" type="RecurrenceRule">
+      Recurrence rule for repeating events
+    </ParamField>
+    
+    <ParamField path="startTzid" type="string">
+      Timezone identifier for the start time (e.g., `"America/New_York"`)
+    </ParamField>
+    
+    <ParamField path="endTzid" type="string">
+      Timezone identifier for the end time
+    </ParamField>
+    
+    <ParamField path="alarms" type="Alarm[]">
+      Array of alarm/reminder configurations
+    </ParamField>
+    
+    <ParamField path="uid" type="string">
+      Unique identifier (auto-generated if not provided)
+    </ParamField>
+    
+    <ParamField path="href" type="string">
+      CalDAV resource URL (auto-generated if not provided)
+    </ParamField>
+    
+    <ParamField path="etag" type="string">
+      Entity tag for concurrency control (auto-generated if not provided)
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<{ uid: string; href: string; etag: string; newCtag: string }>" type="object">
+  A promise that resolves to the created event's metadata
+  
+  <Accordion title="Response Fields">
+    <ResponseField name="uid" type="string">
+      The unique identifier of the created event
+    </ResponseField>
+    
+    <ResponseField name="href" type="string">
+      The CalDAV resource URL of the created event
+    </ResponseField>
+    
+    <ResponseField name="etag" type="string">
+      The entity tag of the created event
+    </ResponseField>
+    
+    <ResponseField name="newCtag" type="string">
+      The updated collection tag of the calendar
+    </ResponseField>
+  </Accordion>
+</ResponseField>
+
+**Throws:** An error if the event with the specified UID already exists (412 status) or if the creation fails.
+
+```typescript
+const result = await client.createEvent(calendarUrl, {
+  summary: 'Team Meeting',
+  start: new Date('2024-03-15T10:00:00Z'),
+  end: new Date('2024-03-15T11:00:00Z'),
+  description: 'Weekly team sync',
+  location: 'Conference Room A',
+  status: 'CONFIRMED'
+});
+
+console.log('Created event UID:', result.uid);
+console.log('Event URL:', result.href);
+```
+
+### updateEvent()
+
+Updates an existing event in the specified calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar containing the event
+</ParamField>
+
+<ParamField path="event" type="Event" required>
+  The event object with updated data. Must include `uid` and `href`.
+</ParamField>
+
+<ResponseField name="Promise<{ uid: string; href: string; etag: string; newCtag: string }>" type="object">
+  A promise that resolves to the updated event's metadata
+</ResponseField>
+
+**Throws:** An error if the event UID does not match (412 status) or if the update fails.
+
+```typescript
+// First, get the event
+const events = await client.getEvents(calendarUrl);
+const event = events[0];
+
+// Update the event
+event.summary = 'Updated Meeting Title';
+event.description = 'New description';
+
+const result = await client.updateEvent(calendarUrl, event);
+console.log('Updated event ETag:', result.etag);
+```
+
+### deleteEvent()
+
+Deletes an event from the specified calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar containing the event
+</ParamField>
+
+<ParamField path="eventUid" type="string" required>
+  The UID of the event to delete
+</ParamField>
+
+<ParamField path="etag" type="string">
+  Optional ETag for concurrency control. If provided, the delete will only succeed if the ETag matches.
+</ParamField>
+
+<ResponseField name="Promise<void>" type="void">
+  A promise that resolves when the event is deleted
+</ResponseField>
+
+**Throws:** An error if the deletion fails.
+
+```typescript
+// Delete with UID only
+await client.deleteEvent(calendarUrl, 'event-uid-123');
+
+// Delete with ETag for concurrency control
+await client.deleteEvent(calendarUrl, 'event-uid-123', '"etag-value"');
+```
+
+### getEventsByHref()
+
+Fetches specific events by their href URLs. This is useful for retrieving events identified during synchronization.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar
+</ParamField>
+
+<ParamField path="hrefs" type="string[]" required>
+  Array of event href URLs to fetch
+</ParamField>
+
+<ResponseField name="Promise<Event[]>" type="Event[]">
+  A promise that resolves to an array of Event objects
+</ResponseField>
+
+```typescript
+const hrefs = [
+  '/calendars/user/default/event1.ics',
+  '/calendars/user/default/event2.ics'
+];
+
+const events = await client.getEventsByHref(calendarUrl, hrefs);
+```
+
+### getETag()
+
+Fetches the current ETag for a given event href. This is useful when the server does not return an ETag on creation.
+
+<Note>
+  **Yahoo CalDAV Note:** Some CalDAV servers (like Yahoo) do not return an ETag when creating events. Use this method to retrieve the ETag after creation.
+</Note>
+
+<ParamField path="href" type="string" required>
+  The full CalDAV event URL (ending in .ics)
+</ParamField>
+
+<ResponseField name="Promise<string>" type="string">
+  A promise that resolves to the ETag string
+</ResponseField>
+
+**Throws:** An error if the ETag is not found or the request fails.
+
+```typescript
+const result = await client.createEvent(calendarUrl, eventData);
+
+// If server didn't return an ETag
+if (!result.etag) {
+  result.etag = await client.getETag(result.href);
+}
+```
+
+## Type Definitions
+
+### Event
+
+```typescript
+interface Event {
+  uid: string;
+  summary: string;
+  start: Date;
+  end: Date;
+  description?: string;
+  location?: string;
+  status?: EventStatus;
+  etag: string;
+  href: string;
+  wholeDay?: boolean;
+  recurrenceRule?: RecurrenceRule;
+  startTzid?: string;
+  endTzid?: string;
+  alarms?: Alarm[];
+}
+```
+
+### EventStatus
+
+```typescript
+type EventStatus = "TENTATIVE" | "CONFIRMED" | "CANCELLED";
+```
+
+### RecurrenceRule
+
+```typescript
+type RecurrenceRule = {
+  freq?: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+  interval?: number;
+  count?: number;
+  until?: Date;
+  wkst?: string;
+  byday?: string[];
+  bymonthday?: number[];
+  bymonth?: number[];
+};
+```
+
+### Alarm
+
+```typescript
+type Alarm =
+  | {
+      action: "DISPLAY";
+      trigger: string;
+      description?: string;
+    }
+  | {
+      action: "EMAIL";
+      trigger: string;
+      description?: string;
+      summary?: string;
+      attendees: string[];
+    }
+  | {
+      action: "AUDIO";
+      trigger: string;
+    };
+```
+
+## Complete Example
+
+```typescript
+import { CalDAVClient } from 'ts-caldav';
+
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'basic',
+    username: 'user@example.com',
+    password: 'password'
+  }
+});
+
+const calendars = await client.getCalendars();
+const calendar = calendars[0];
+
+// Create a recurring event with alarm
+const result = await client.createEvent(calendar.url, {
+  summary: 'Daily Standup',
+  start: new Date('2024-03-15T09:00:00Z'),
+  end: new Date('2024-03-15T09:30:00Z'),
+  description: 'Team daily standup meeting',
+  location: 'Zoom',
+  recurrenceRule: {
+    freq: 'DAILY',
+    byday: ['MO', 'TU', 'WE', 'TH', 'FR'],
+    until: new Date('2024-12-31T23:59:59Z')
+  },
+  alarms: [
+    {
+      action: 'DISPLAY',
+      trigger: '-PT15M', // 15 minutes before
+      description: 'Standup in 15 minutes'
+    }
+  ]
+});
+
+console.log('Created recurring event:', result.uid);
+
+// Get and update the event
+const events = await client.getEvents(calendar.url);
+const event = events.find(e => e.uid === result.uid);
+
+if (event) {
+  event.location = 'Microsoft Teams';
+  await client.updateEvent(calendar.url, event);
+}
+
+// Delete the event
+await client.deleteEvent(calendar.url, result.uid);
+```

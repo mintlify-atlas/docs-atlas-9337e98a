@@ -1,0 +1,377 @@
+---
+title: 'Todo Operations'
+description: 'CRUD operations for CalDAV todos/tasks'
+---
+
+## Overview
+
+Todo operations provide methods to create, read, update, and delete todo/task items on a CalDAV server.
+
+## Methods
+
+### getTodos()
+
+Fetches all todos from a specific calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar to fetch todos from
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional parameters for fetching todos
+  
+  <Accordion title="Options Properties">
+    <ParamField path="start" type="Date">
+      Start date for the time range filter. Defaults to current date.
+    </ParamField>
+    
+    <ParamField path="end" type="Date">
+      End date for the time range filter. Defaults to 3 weeks from now.
+    </ParamField>
+    
+    <ParamField path="all" type="boolean">
+      If `true`, fetches all todos without time range filtering. Defaults to `true` for todos.
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<Todo[]>" type="Todo[]">
+  A promise that resolves to an array of Todo objects
+</ResponseField>
+
+```typescript
+// Get all todos (default behavior)
+const todos = await client.getTodos(calendarUrl);
+
+// Get todos within a specific time range
+const startDate = new Date('2024-01-01');
+const endDate = new Date('2024-01-31');
+const januaryTodos = await client.getTodos(calendarUrl, {
+  start: startDate,
+  end: endDate,
+  all: false
+});
+```
+
+### createTodo()
+
+Creates a new todo in the specified calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar to create the todo in
+</ParamField>
+
+<ParamField path="todoData" type="PartialBy<Todo, 'uid' | 'href' | 'etag'>" required>
+  The todo data. The `uid`, `href`, and `etag` fields are optional and will be auto-generated if not provided.
+  
+  <Accordion title="Todo Properties">
+    <ParamField path="summary" type="string" required>
+      The todo title/summary
+    </ParamField>
+    
+    <ParamField path="start" type="Date">
+      The todo start date/time
+    </ParamField>
+    
+    <ParamField path="due" type="Date">
+      The todo due date/time
+    </ParamField>
+    
+    <ParamField path="completed" type="Date">
+      The date/time when the todo was completed
+    </ParamField>
+    
+    <ParamField path="status" type="TodoStatus">
+      Todo status: `"NEEDS-ACTION"`, `"COMPLETED"`, `"IN-PROCESS"`, or `"CANCELLED"`
+    </ParamField>
+    
+    <ParamField path="description" type="string">
+      Detailed description of the todo
+    </ParamField>
+    
+    <ParamField path="location" type="string">
+      Todo location
+    </ParamField>
+    
+    <ParamField path="alarms" type="Alarm[]">
+      Array of alarm/reminder configurations
+    </ParamField>
+    
+    <ParamField path="sortOrder" type="number">
+      Sort order for the todo (Apple extension: X-APPLE-SORT-ORDER)
+    </ParamField>
+    
+    <ParamField path="uid" type="string">
+      Unique identifier (auto-generated if not provided)
+    </ParamField>
+    
+    <ParamField path="href" type="string">
+      CalDAV resource URL (auto-generated if not provided)
+    </ParamField>
+    
+    <ParamField path="etag" type="string">
+      Entity tag for concurrency control (auto-generated if not provided)
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<{ uid: string; href: string; etag: string; newCtag: string }>" type="object">
+  A promise that resolves to the created todo's metadata
+  
+  <Accordion title="Response Fields">
+    <ResponseField name="uid" type="string">
+      The unique identifier of the created todo
+    </ResponseField>
+    
+    <ResponseField name="href" type="string">
+      The CalDAV resource URL of the created todo
+    </ResponseField>
+    
+    <ResponseField name="etag" type="string">
+      The entity tag of the created todo
+    </ResponseField>
+    
+    <ResponseField name="newCtag" type="string">
+      The updated collection tag of the calendar
+    </ResponseField>
+  </Accordion>
+</ResponseField>
+
+**Throws:** An error if the todo with the specified UID already exists (412 status) or if the creation fails.
+
+```typescript
+const result = await client.createTodo(calendarUrl, {
+  summary: 'Review pull requests',
+  due: new Date('2024-03-20T17:00:00Z'),
+  status: 'NEEDS-ACTION',
+  description: 'Review pending PRs in the repository',
+  sortOrder: 1
+});
+
+console.log('Created todo UID:', result.uid);
+console.log('Todo URL:', result.href);
+```
+
+### updateTodo()
+
+Updates an existing todo in the specified calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar containing the todo
+</ParamField>
+
+<ParamField path="todo" type="Todo" required>
+  The todo object with updated data. Must include `uid` and `href`.
+</ParamField>
+
+<ResponseField name="Promise<{ uid: string; href: string; etag: string; newCtag: string }>" type="object">
+  A promise that resolves to the updated todo's metadata
+</ResponseField>
+
+**Throws:** An error if the todo UID does not match (412 status) or if the update fails.
+
+```typescript
+// First, get the todo
+const todos = await client.getTodos(calendarUrl);
+const todo = todos[0];
+
+// Update the todo
+todo.status = 'COMPLETED';
+todo.completed = new Date();
+
+const result = await client.updateTodo(calendarUrl, todo);
+console.log('Updated todo ETag:', result.etag);
+```
+
+### deleteTodo()
+
+Deletes a todo from the specified calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar containing the todo
+</ParamField>
+
+<ParamField path="todoUid" type="string" required>
+  The UID of the todo to delete
+</ParamField>
+
+<ParamField path="etag" type="string">
+  Optional ETag for concurrency control. If provided, the delete will only succeed if the ETag matches.
+</ParamField>
+
+<ResponseField name="Promise<void>" type="void">
+  A promise that resolves when the todo is deleted
+</ResponseField>
+
+**Throws:** An error if the deletion fails.
+
+```typescript
+// Delete with UID only
+await client.deleteTodo(calendarUrl, 'todo-uid-123');
+
+// Delete with ETag for concurrency control
+await client.deleteTodo(calendarUrl, 'todo-uid-123', '"etag-value"');
+```
+
+### getTodosByHref()
+
+Fetches specific todos by their href URLs. This is useful for retrieving todos identified during synchronization.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar
+</ParamField>
+
+<ParamField path="hrefs" type="string[]" required>
+  Array of todo href URLs to fetch
+</ParamField>
+
+<ResponseField name="Promise<Todo[]>" type="Todo[]">
+  A promise that resolves to an array of Todo objects
+</ResponseField>
+
+```typescript
+const hrefs = [
+  '/calendars/user/tasks/todo1.ics',
+  '/calendars/user/tasks/todo2.ics'
+];
+
+const todos = await client.getTodosByHref(calendarUrl, hrefs);
+```
+
+## Type Definitions
+
+### Todo
+
+```typescript
+interface Todo {
+  uid: string;
+  summary: string;
+  start?: Date;
+  due?: Date;
+  completed?: Date;
+  status?: TodoStatus;
+  description?: string;
+  location?: string;
+  etag: string;
+  href: string;
+  alarms?: Alarm[];
+  sortOrder?: number;
+}
+```
+
+### TodoStatus
+
+```typescript
+type TodoStatus = "NEEDS-ACTION" | "COMPLETED" | "IN-PROCESS" | "CANCELLED";
+```
+
+### Alarm
+
+```typescript
+type Alarm =
+  | {
+      action: "DISPLAY";
+      trigger: string;
+      description?: string;
+    }
+  | {
+      action: "EMAIL";
+      trigger: string;
+      description?: string;
+      summary?: string;
+      attendees: string[];
+    }
+  | {
+      action: "AUDIO";
+      trigger: string;
+    };
+```
+
+## Complete Example
+
+```typescript
+import { CalDAVClient } from 'ts-caldav';
+
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'basic',
+    username: 'user@example.com',
+    password: 'password'
+  }
+});
+
+const calendars = await client.getCalendars();
+const todoCalendar = calendars.find(cal =>
+  cal.supportedComponents.includes('VTODO')
+);
+
+if (!todoCalendar) {
+  throw new Error('No todo calendar found');
+}
+
+// Create a todo with alarm
+const result = await client.createTodo(todoCalendar.url, {
+  summary: 'Complete project documentation',
+  due: new Date('2024-03-25T17:00:00Z'),
+  status: 'NEEDS-ACTION',
+  description: 'Write comprehensive API docs for the new features',
+  sortOrder: 1,
+  alarms: [
+    {
+      action: 'DISPLAY',
+      trigger: '-PT1H', // 1 hour before due date
+      description: 'Documentation due in 1 hour'
+    }
+  ]
+});
+
+console.log('Created todo:', result.uid);
+
+// Get all todos
+const todos = await client.getTodos(todoCalendar.url);
+console.log(`Total todos: ${todos.length}`);
+
+// Find and update a specific todo
+const myTodo = todos.find(t => t.uid === result.uid);
+if (myTodo) {
+  myTodo.status = 'IN-PROCESS';
+  myTodo.description += '\n\nStarted working on this task.';
+  await client.updateTodo(todoCalendar.url, myTodo);
+}
+
+// Mark as completed
+if (myTodo) {
+  myTodo.status = 'COMPLETED';
+  myTodo.completed = new Date();
+  await client.updateTodo(todoCalendar.url, myTodo);
+}
+
+// Delete the todo
+await client.deleteTodo(todoCalendar.url, result.uid);
+```
+
+## Working with Todo Status
+
+```typescript
+const todos = await client.getTodos(calendarUrl);
+
+// Filter by status
+const activeTodos = todos.filter(t => 
+  t.status === 'NEEDS-ACTION' || t.status === 'IN-PROCESS'
+);
+
+const completedTodos = todos.filter(t => 
+  t.status === 'COMPLETED'
+);
+
+// Sort by due date
+const sortedTodos = activeTodos.sort((a, b) => {
+  if (!a.due) return 1;
+  if (!b.due) return -1;
+  return a.due.getTime() - b.due.getTime();
+});
+
+console.log('Active todos:', activeTodos.length);
+console.log('Completed todos:', completedTodos.length);
+```

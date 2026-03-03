@@ -1,0 +1,394 @@
+---
+title: Supported CalDAV Servers
+description: Known working CalDAV servers and their configuration requirements
+---
+
+## Overview
+
+ts-caldav is designed to work with any standards-compliant CalDAV server. This guide lists servers that have been tested and verified to work, along with any server-specific configuration notes.
+
+## Tested Servers
+
+The following CalDAV providers are confirmed to work with ts-caldav:
+
+<CardGroup cols={2}>
+  <Card title="Google Calendar" icon="google" color="#4285F4">
+    Requires app-specific password or OAuth2. Endpoint is auto-discovered.
+  </Card>
+  
+  <Card title="iCloud" icon="cloud" color="#007AFF">
+    Requires app-specific password. Full timezone support.
+  </Card>
+  
+  <Card title="Yahoo Calendar" icon="yahoo" color="#720E9E">
+    Note: Does not return ETags on event creation.
+  </Card>
+  
+  <Card title="Fastmail" icon="envelope" color="#115278">
+    Requires app-specific password. Excellent CalDAV compliance.
+  </Card>
+  
+  <Card title="GMX" icon="calendar" color="#1C449B">
+    Works with standard authentication.
+  </Card>
+  
+  <Card title="Nextcloud" icon="server" color="#0082C9">
+    Self-hosted option with full CalDAV support.
+  </Card>
+</CardGroup>
+
+## Server Endpoints
+
+| Provider | Base URL | Discovery |
+|----------|----------|----------|
+| **Google Calendar** | `https://apidata.googleusercontent.com/` | Automatic |
+| **iCloud** | `https://caldav.icloud.com/` | Automatic |
+| **Yahoo Calendar** | `https://caldav.calendar.yahoo.com` | Automatic |
+| **GMX** | `https://caldav.gmx.net` | Automatic |
+| **Fastmail** | `https://caldav.fastmail.com` | Automatic |
+| **Nextcloud** | `https://your-domain.com/remote.php/dav` | Automatic |
+| **Radicale** | `https://your-domain.com/` | Automatic |
+
+<Note>
+All servers support automatic endpoint discovery via `.well-known/caldav` or standard CalDAV paths. You typically only need to provide the base URL.
+</Note>
+
+## Google Calendar
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://apidata.googleusercontent.com/",
+  auth: {
+    type: "basic",
+    username: "your.email@gmail.com",
+    password: "app-specific-password"  // See below
+  }
+});
+```
+
+### App-Specific Passwords
+
+Google requires app-specific passwords when 2-Step Verification is enabled:
+
+1. Go to [Google Account Security](https://myaccount.google.com/security)
+2. Under "Signing in to Google", select "2-Step Verification"
+3. At the bottom, select "App passwords"
+4. Select "Mail" or "Calendar" and your device
+5. Generate and copy the 16-character password
+6. Use this password in place of your regular password
+
+### OAuth2 Support
+
+For OAuth2 authentication with Google:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://apidata.googleusercontent.com/",
+  auth: {
+    type: "oauth",
+    accessToken: "ya29.a0AfH6SMC..."
+  }
+});
+```
+
+You'll need to implement the OAuth2 flow separately to obtain the access token.
+
+## iCloud
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.icloud.com/",
+  auth: {
+    type: "basic",
+    username: "your-apple-id@icloud.com",
+    password: "app-specific-password"
+  }
+});
+```
+
+### App-Specific Passwords
+
+iCloud requires app-specific passwords for third-party apps:
+
+1. Sign in to [appleid.apple.com](https://appleid.apple.com)
+2. In the "Security" section, select "Generate Password" under "App-Specific Passwords"
+3. Follow the steps on screen
+4. Use the generated password with ts-caldav
+
+<Tip>
+iCloud has excellent CalDAV compliance and supports all features including recurring events, timezones, and alarms.
+</Tip>
+
+## Yahoo Calendar
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.calendar.yahoo.com",
+  auth: {
+    type: "basic",
+    username: "your-email@yahoo.com",
+    password: "app-specific-password"
+  }
+});
+```
+
+### Known Limitations
+
+<Warning>
+Yahoo CalDAV servers do not return ETag headers when creating events. You must fetch the ETag manually before updating events.
+</Warning>
+
+Workaround for updating events:
+
+```typescript
+// Create event
+const result = await client.createEvent(calendar.url, {
+  summary: "Meeting",
+  start: new Date(),
+  end: new Date(Date.now() + 3600000)
+});
+
+// Yahoo doesn't return etag, so fetch it manually
+const etag = await client.getETag(result.href);
+
+// Now you can update with the etag
+await client.updateEvent(calendar.url, {
+  uid: result.uid,
+  href: result.href,
+  etag: etag,
+  summary: "Updated Meeting",
+  start: new Date(),
+  end: new Date(Date.now() + 3600000)
+});
+```
+
+## Fastmail
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.fastmail.com",
+  auth: {
+    type: "basic",
+    username: "your-email@fastmail.com",
+    password: "app-specific-password"
+  }
+});
+```
+
+### App Passwords
+
+Create an app password in Fastmail:
+
+1. Go to Settings → Password & Security
+2. Under "App Passwords", click "New App Password"
+3. Select "CalDAV" or "Third-Party App"
+4. Copy the generated password
+
+<Tip>
+Fastmail has excellent CalDAV support and is one of the most standards-compliant implementations.
+</Tip>
+
+## GMX
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.gmx.net",
+  auth: {
+    type: "basic",
+    username: "your-email@gmx.com",
+    password: "your-password"
+  }
+});
+```
+
+GMX works with your regular account password (no app-specific password required).
+
+## Nextcloud
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://your-nextcloud.com/remote.php/dav",
+  auth: {
+    type: "basic",
+    username: "username",
+    password: "password"  // or app password
+  }
+});
+```
+
+### App Passwords (Recommended)
+
+For better security, create app-specific passwords:
+
+1. Go to Settings → Security
+2. Under "Devices & sessions", create a new app password
+3. Name it (e.g., "ts-caldav app")
+4. Use the generated password
+
+### Self-Hosted Considerations
+
+- Ensure your Nextcloud instance has CalDAV enabled
+- Check that HTTPS is properly configured
+- Verify CORS settings if accessing from a browser
+
+## Radicale
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://radicale.example.com/",
+  auth: {
+    type: "basic",
+    username: "username",
+    password: "password"
+  }
+});
+```
+
+Radicale is a lightweight CalDAV server often used for self-hosting. It supports all standard CalDAV features.
+
+## Authentication Methods
+
+### Basic Authentication
+
+Most commonly used, supported by all servers:
+
+```typescript
+auth: {
+  type: "basic",
+  username: "user@example.com",
+  password: "password-or-app-password"
+}
+```
+
+### OAuth2
+
+Supported for Google and other providers:
+
+```typescript
+auth: {
+  type: "oauth",
+  accessToken: "your-oauth-access-token"
+}
+```
+
+<Note>
+ts-caldav doesn't implement the OAuth2 flow itself. You need to obtain access tokens using a separate OAuth2 library.
+</Note>
+
+## Common Issues and Solutions
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized Error">
+    - Verify username and password are correct
+    - For Google/iCloud/Fastmail, ensure you're using an app-specific password
+    - Check that the account has CalDAV access enabled
+  </Accordion>
+  
+  <Accordion title="404 Not Found">
+    - Verify the base URL is correct for your provider
+    - Check that the server supports CalDAV
+    - Ensure the calendar exists and you have access to it
+  </Accordion>
+  
+  <Accordion title="Calendar home not found">
+    - The server may not support CalDAV properly
+    - Try different base URLs (check provider documentation)
+    - Verify credentials are valid and account is properly set up
+  </Accordion>
+  
+  <Accordion title="CORS errors in browser">
+    - CalDAV servers often don't support CORS
+    - Use a proxy server or backend API to make requests
+    - Consider using ts-caldav in a Node.js backend instead
+  </Accordion>
+</AccordionGroup>
+
+## Testing Server Compatibility
+
+To test if a CalDAV server works with ts-caldav:
+
+```typescript
+try {
+  const client = await CalDAVClient.create({
+    baseUrl: "https://your-caldav-server.com",
+    auth: {
+      type: "basic",
+      username: "user",
+      password: "pass"
+    },
+    logRequests: true  // Enable logging to see requests
+  });
+  
+  console.log("Calendar home:", client.getCalendarHome());
+  
+  const calendars = await client.getCalendars();
+  console.log(`Found ${calendars.length} calendars`);
+  
+  calendars.forEach(cal => {
+    console.log(`- ${cal.displayName}: ${cal.supportedComponents.join(', ')}`);
+  });
+  
+  console.log("✓ Server is compatible!");
+} catch (error) {
+  console.error("✗ Server is not compatible:", error.message);
+}
+```
+
+## Feature Support Matrix
+
+| Server | Events | Todos | Recurrence | Timezones | ETags | Colors |
+|--------|--------|-------|------------|-----------|-------|--------|
+| Google | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| iCloud | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Yahoo | ✓ | ✓ | ✓ | ✓ | ⚠️ | ✓ |
+| Fastmail | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| GMX | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Nextcloud | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Radicale | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+<Note>
+✓ = Fully supported | ⚠️ = Partial support (see limitations) | ✗ = Not supported
+</Note>
+
+## Adding Support for New Servers
+
+If you're using a CalDAV server not listed here:
+
+1. Ensure it implements RFC 4791 (CalDAV)
+2. Find the server's CalDAV base URL (check provider documentation)
+3. Try connecting with `logRequests: true` to see the discovery process
+4. Report compatibility in the [GitHub repository](https://github.com/KlautNet/ts-caldav/issues)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with your CalDAV server
+  </Card>
+  
+  <Card title="Authentication" icon="key" href="/concepts/authentication">
+    Learn more about authentication options
+  </Card>
+  
+  <Card title="Caching" icon="database" href="/guides/caching">
+    Improve performance with client state caching
+  </Card>
+  
+  <Card title="Report Issues" icon="github" href="https://github.com/KlautNet/ts-caldav/issues">
+    Found a compatibility issue? Let us know!
+  </Card>
+</CardGroup>

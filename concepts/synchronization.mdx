@@ -1,0 +1,563 @@
+---
+title: "Synchronization"
+description: "Efficiently sync calendar data with CTags and ETags"
+icon: "arrows-rotate"
+---
+
+CalDAV uses CTags and ETags to enable efficient synchronization. Instead of downloading all calendar data on every sync, you can detect changes and only fetch what's new or updated.
+
+## Understanding Tags
+
+### CTag (Collection Tag)
+
+The CTag is a calendar-level version identifier that changes whenever any item in the calendar is added, modified, or deleted.
+
+```typescript models.ts
+export interface Calendar {
+  displayName: string;
+  url: string;
+  ctag?: string;  // Changes when calendar contents change
+  supportedComponents: SupportedComponent[];
+  color?: string;
+}
+```
+
+**When CTag changes:**
+- Any event is created, updated, or deleted
+- Any todo is created, updated, or deleted
+- Any calendar item is modified
+
+**When CTag stays the same:**
+- No changes to calendar contents
+- Properties of the calendar itself changed (like display name)
+
+### ETag (Entity Tag)
+
+The ETag is an item-level version identifier that changes whenever that specific event or todo is modified.
+
+```typescript models.ts
+export interface Event {
+  uid: string;
+  summary: string;
+  // ...
+  etag: string;  // Changes when this event is modified
+  href: string;
+}
+
+export interface EventRef {
+  href: string;
+  etag: string;  // Minimal reference for sync
+}
+```
+
+**When ETag changes:**
+- Event/todo properties are modified
+- Alarms are added or removed
+- Recurrence rules are changed
+
+## Getting Tags
+
+### Get Calendar CTag
+
+```typescript
+const calendars = await client.getCalendars();
+const calendar = calendars[0];
+
+console.log(`Current CTag: ${calendar.ctag}`);
+
+// Or fetch CTag separately
+const ctag = await client.getCtag(calendar.url);
+```
+
+The implementation:
+
+```typescript client.ts
+public async getCtag(calendarUrl: string): Promise<string> {
+  const requestBody = `
+    <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/">
+      <d:prop><cs:getctag/></d:prop>
+    </d:propfind>`;
+
+  const res = await this.httpClient.request({
+    method: "PROPFIND",
+    url: calendarUrl,
+    data: requestBody,
+    headers: { Depth: "0", "Content-Type": XML_CT },
+    validateStatus: (s) => s === 207,
+  });
+
+  const json = this.parser.parse(res.data);
+  return json?.multistatus?.response?.propstat?.prop?.getctag;
+}
+```
+
+### Get Event ETag
+
+```typescript
+const events = await client.getEvents(calendar.url);
+const event = events[0];
+
+console.log(`Event ETag: ${event.etag}`);
+
+// Or fetch ETag separately
+const etag = await client.getETag(event.href);
+```
+
+<Info>
+  Most operations return the ETag in the response. Use `getETag()` when servers don't return it on creation (like Yahoo).
+</Info>
+
+## Synchronization Flow
+
+### 1. Initial Sync
+
+On first sync, fetch all data and store the CTag:
+
+```typescript
+// Initial sync
+const calendars = await client.getCalendars();
+const calendar = calendars[0];
+
+// Fetch all events
+const events = await client.getEvents(calendar.url, { all: true });
+
+// Store minimal refs for future sync
+const eventRefs = events.map(e => ({
+  href: e.href,
+  etag: e.etag
+}));
+
+// Store the CTag
+const currentCtag = calendar.ctag;
+
+// Save to local storage
+await saveToDatabase({
+  calendarUrl: calendar.url,
+  ctag: currentCtag,
+  eventRefs: eventRefs,
+  events: events
+});
+```
+
+### 2. Check for Changes
+
+Before syncing, check if the CTag has changed:
+
+```typescript
+const { ctag: savedCtag, eventRefs } = await loadFromDatabase(calendar.url);
+
+// Quick check: has anything changed?
+const currentCtag = await client.getCtag(calendar.url);
+
+if (currentCtag === savedCtag) {
+  console.log('No changes, skip sync');
+  return;
+}
+
+console.log('Changes detected, syncing...');
+```
+
+### 3. Sync Changes
+
+Use `syncChanges()` to identify what changed:
+
+```typescript
+const result = await client.syncChanges(
+  calendar.url,
+  savedCtag,
+  eventRefs
+);
+
+if (!result.changed) {
+  console.log('No changes');
+  return;
+}
+
+console.log(`New events: ${result.newEvents.length}`);
+console.log(`Updated events: ${result.updatedEvents.length}`);
+console.log(`Deleted events: ${result.deletedEvents.length}`);
+```
+
+The method signature:
+
+```typescript client.ts
+public async syncChanges(
+  calendarUrl: string,
+  ctag: string,
+  localEvents: EventRef[],
+): Promise<SyncChangesResult>
+```
+
+Returns:
+
+```typescript models.ts
+export interface SyncChangesResult {
+  changed: boolean;
+  newCtag: string;
+  newEvents: string[];      // hrefs of new events
+  updatedEvents: string[];  // hrefs of updated events
+  deletedEvents: string[];  // hrefs of deleted events
+}
+```
+
+### 4. Fetch Changed Items
+
+Fetch only the new and updated events:
+
+```typescript
+if (result.changed) {
+  // Combine new and updated
+  const hrefs = [...result.newEvents, ...result.updatedEvents];
+  
+  if (hrefs.length > 0) {
+    const changedEvents = await client.getEventsByHref(
+      calendar.url,
+      hrefs
+    );
+    
+    // Update local storage
+    await updateLocalEvents(changedEvents);
+  }
+  
+  // Remove deleted events
+  if (result.deletedEvents.length > 0) {
+    await removeLocalEvents(result.deletedEvents);
+  }
+  
+  // Update CTag
+  await saveCTag(calendar.url, result.newCtag);
+}
+```
+
+## Sync Implementation
+
+The sync algorithm compares local and remote references:
+
+```typescript client.ts
+private diffRefs(
+  remoteRefs: { href: string; etag: string }[],
+  localRefs: { href: string; etag: string }[],
+): { newItems: string[]; updatedItems: string[]; deletedItems: string[] } {
+  const localMap = new Map(localRefs.map((i) => [i.href, i.etag]));
+  const remoteMap = new Map(remoteRefs.map((i) => [i.href, i.etag]));
+
+  const newItems: string[] = [];
+  const updatedItems: string[] = [];
+  const deletedItems: string[] = [];
+
+  for (const { href, etag } of remoteRefs) {
+    if (!localMap.has(href)) newItems.push(href);
+    else if (localMap.get(href) !== etag) updatedItems.push(href);
+  }
+  for (const { href } of localRefs) {
+    if (!remoteMap.has(href)) deletedItems.push(href);
+  }
+  return { newItems, updatedItems, deletedItems };
+}
+```
+
+This efficiently identifies:
+- **New items**: In remote but not in local
+- **Updated items**: In both but with different ETags
+- **Deleted items**: In local but not in remote
+
+## Syncing Todos
+
+Todos use the same pattern with `syncTodoChanges()`:
+
+```typescript
+const todoRefs = todos.map(t => ({
+  href: t.href,
+  etag: t.etag
+}));
+
+const result = await client.syncTodoChanges(
+  calendar.url,
+  savedCtag,
+  todoRefs
+);
+
+if (result.changed) {
+  const hrefs = [...result.newTodos, ...result.updatedTodos];
+  
+  if (hrefs.length > 0) {
+    const changedTodos = await client.getTodosByHref(
+      calendar.url,
+      hrefs
+    );
+    await updateLocalTodos(changedTodos);
+  }
+  
+  if (result.deletedTodos.length > 0) {
+    await removeLocalTodos(result.deletedTodos);
+  }
+  
+  await saveCTag(calendar.url, result.newCtag);
+}
+```
+
+The result type:
+
+```typescript models.ts
+export interface SyncTodosResult {
+  changed: boolean;
+  newCtag: string;
+  newTodos: string[];
+  updatedTodos: string[];
+  deletedTodos: string[];
+}
+```
+
+## Concurrency Control
+
+ETags also prevent conflicting updates through optimistic concurrency control:
+
+```typescript client.ts
+private async updateItem<T extends { uid: string; href: string; etag?: string }>(
+  calendarUrl: string,
+  item: T,
+  buildFn: (item: T, uid: string) => string,
+  itemType: "event" | "todo",
+): Promise<{ uid: string; href: string; etag: string; newCtag: string }> {
+  // ...
+  const ifMatch = this.cleanEtag(item.etag);
+  const extraHeaders: Record<string, string> = {};
+  if (ifMatch && !this.isWeak(ifMatch)) {
+    extraHeaders["If-Match"] = ifMatch;
+  }
+
+  try {
+    const response = await this.mkIcsPut(item.href, ics, extraHeaders);
+    // ...
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 412) {
+      throw new Error(
+        `${itemType[0].toUpperCase() + itemType.slice(1)} with the specified uid does not match.`,
+      );
+    }
+    throw new Error(`Failed to update ${itemType}: ${error}`);
+  }
+}
+```
+
+If the ETag doesn't match, the server returns HTTP 412 (Precondition Failed), preventing the conflicting update.
+
+## Practical Examples
+
+### Complete Sync System
+
+```typescript
+interface SyncState {
+  calendarUrl: string;
+  ctag: string;
+  eventRefs: { href: string; etag: string }[];
+  lastSync: Date;
+}
+
+class CalendarSync {
+  private state: Map<string, SyncState> = new Map();
+  
+  async initialSync(calendarUrl: string) {
+    const events = await client.getEvents(calendarUrl, { all: true });
+    const ctag = await client.getCtag(calendarUrl);
+    
+    const eventRefs = events.map(e => ({
+      href: e.href,
+      etag: e.etag
+    }));
+    
+    this.state.set(calendarUrl, {
+      calendarUrl,
+      ctag,
+      eventRefs,
+      lastSync: new Date()
+    });
+    
+    return events;
+  }
+  
+  async sync(calendarUrl: string) {
+    const state = this.state.get(calendarUrl);
+    if (!state) {
+      return this.initialSync(calendarUrl);
+    }
+    
+    const result = await client.syncChanges(
+      calendarUrl,
+      state.ctag,
+      state.eventRefs
+    );
+    
+    if (!result.changed) {
+      console.log('No changes since last sync');
+      return [];
+    }
+    
+    // Fetch changed events
+    const hrefs = [...result.newEvents, ...result.updatedEvents];
+    const changedEvents = hrefs.length > 0
+      ? await client.getEventsByHref(calendarUrl, hrefs)
+      : [];
+    
+    // Update state
+    const allEvents = await client.getEvents(calendarUrl, { all: true });
+    const eventRefs = allEvents.map(e => ({
+      href: e.href,
+      etag: e.etag
+    }));
+    
+    this.state.set(calendarUrl, {
+      calendarUrl,
+      ctag: result.newCtag,
+      eventRefs,
+      lastSync: new Date()
+    });
+    
+    return {
+      new: result.newEvents.length,
+      updated: result.updatedEvents.length,
+      deleted: result.deletedEvents.length,
+      events: changedEvents
+    };
+  }
+  
+  needsSync(calendarUrl: string, maxAge: number = 5 * 60 * 1000) {
+    const state = this.state.get(calendarUrl);
+    if (!state) return true;
+    
+    const age = Date.now() - state.lastSync.getTime();
+    return age > maxAge;
+  }
+}
+```
+
+### Periodic Sync
+
+```typescript
+const sync = new CalendarSync();
+
+// Initial sync
+await sync.initialSync(calendar.url);
+
+// Sync every 5 minutes
+setInterval(async () => {
+  if (sync.needsSync(calendar.url)) {
+    const result = await sync.sync(calendar.url);
+    console.log('Sync complete:', result);
+  }
+}, 5 * 60 * 1000);
+```
+
+### Multi-Calendar Sync
+
+```typescript
+async function syncAllCalendars() {
+  const calendars = await client.getCalendars();
+  
+  for (const calendar of calendars) {
+    console.log(`Syncing ${calendar.displayName}...`);
+    
+    const result = await sync.sync(calendar.url);
+    
+    if (result.new > 0 || result.updated > 0 || result.deleted > 0) {
+      console.log(`  New: ${result.new}`);
+      console.log(`  Updated: ${result.updated}`);
+      console.log(`  Deleted: ${result.deleted}`);
+    } else {
+      console.log('  No changes');
+    }
+  }
+}
+```
+
+### Conflict Detection
+
+```typescript
+async function updateEventSafe(event: Event) {
+  try {
+    const result = await client.updateEvent(calendar.url, event);
+    console.log('Update successful');
+    return result;
+  } catch (error) {
+    if (error.message.includes('does not match')) {
+      console.log('Conflict detected! Event was modified by someone else.');
+      
+      // Fetch latest version
+      const latest = await client.getEventsByHref(calendar.url, [event.href]);
+      console.log('Latest version:', latest[0]);
+      
+      // Let user resolve conflict
+      throw new Error('Event has been modified. Please refresh and try again.');
+    }
+    throw error;
+  }
+}
+```
+
+## Best Practices
+
+### 1. Store Minimal Data
+
+Only store refs (href + etag) between syncs:
+
+```typescript
+// Good: minimal storage
+const refs = events.map(e => ({ href: e.href, etag: e.etag }));
+
+// Bad: storing full events wastes space
+const fullEvents = events;
+```
+
+### 2. Check CTag First
+
+Always check CTag before syncing:
+
+```typescript
+const newCtag = await client.getCtag(calendar.url);
+if (newCtag === savedCtag) {
+  return; // Skip sync
+}
+```
+
+### 3. Batch Fetch Changes
+
+Fetch all changed events in one request:
+
+```typescript
+// Good: one request
+const changed = await client.getEventsByHref(calendar.url, allHrefs);
+
+// Bad: multiple requests
+for (const href of allHrefs) {
+  await client.getEventsByHref(calendar.url, [href]);
+}
+```
+
+### 4. Handle Network Errors
+
+```typescript
+try {
+  await sync.sync(calendar.url);
+} catch (error) {
+  console.error('Sync failed, will retry later:', error);
+  // Keep old state, retry on next interval
+}
+```
+
+### 5. Use Optimistic Updates
+
+Update local data immediately, sync in background:
+
+```typescript
+// Update local data
+const optimisticEvent = { ...event, summary: 'New title' };
+awaitLocalDB.update(optimisticEvent);
+
+// Sync to server in background
+client.updateEvent(calendar.url, optimisticEvent)
+  .catch(error => {
+    // Rollback on error
+    await localDB.update(event);
+    showError('Failed to sync changes');
+  });
+```

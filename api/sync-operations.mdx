@@ -1,0 +1,394 @@
+---
+title: 'Sync Operations'
+description: 'Methods for synchronizing local and remote calendar data'
+---
+
+## Overview
+
+Sync operations allow you to efficiently detect changes between local and remote calendar data using CTags and ETags. This is essential for building applications that cache calendar data locally.
+
+## Methods
+
+### syncChanges()
+
+Synchronizes changes between local events and the remote calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar to sync with
+</ParamField>
+
+<ParamField path="ctag" type="string" required>
+  The current CTag of the calendar (from your local cache)
+</ParamField>
+
+<ParamField path="localEvents" type="EventRef[]" required>
+  Array of local event references to compare against remote
+  
+  <Accordion title="EventRef Properties">
+    <ParamField path="href" type="string" required>
+      The CalDAV resource URL of the event
+    </ParamField>
+    
+    <ParamField path="etag" type="string" required>
+      The entity tag of the event
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<SyncChangesResult>" type="SyncChangesResult">
+  A promise that resolves to an object containing the sync results
+  
+  <Accordion title="SyncChangesResult Properties">
+    <ResponseField name="changed" type="boolean" required>
+      Whether any changes were detected. If `false`, the calendar is unchanged and other fields will be empty.
+    </ResponseField>
+    
+    <ResponseField name="newCtag" type="string" required>
+      The updated CTag from the server. Save this for the next sync.
+    </ResponseField>
+    
+    <ResponseField name="newEvents" type="string[]" required>
+      Array of href URLs for events that exist on the server but not locally. Fetch these with `getEventsByHref()`.
+    </ResponseField>
+    
+    <ResponseField name="updatedEvents" type="string[]" required>
+      Array of href URLs for events that have different ETags (modified on server). Fetch these with `getEventsByHref()`.
+    </ResponseField>
+    
+    <ResponseField name="deletedEvents" type="string[]" required>
+      Array of href URLs for events that exist locally but were deleted from the server. Remove these from local storage.
+    </ResponseField>
+  </Accordion>
+</ResponseField>
+
+```typescript
+// Assume you have stored these locally
+const storedCtag = '"12345"';
+const localEvents = [
+  { href: '/cal/event1.ics', etag: '"abc"' },
+  { href: '/cal/event2.ics', etag: '"def"' }
+];
+
+// Check for changes
+const syncResult = await client.syncChanges(
+  calendarUrl,
+  storedCtag,
+  localEvents
+);
+
+if (!syncResult.changed) {
+  console.log('Calendar is up to date');
+} else {
+  console.log('New CTag:', syncResult.newCtag);
+  console.log('New events:', syncResult.newEvents.length);
+  console.log('Updated events:', syncResult.updatedEvents.length);
+  console.log('Deleted events:', syncResult.deletedEvents.length);
+  
+  // Fetch new and updated events
+  const toFetch = [
+    ...syncResult.newEvents,
+    ...syncResult.updatedEvents
+  ];
+  
+  if (toFetch.length > 0) {
+    const events = await client.getEventsByHref(calendarUrl, toFetch);
+    // Update local storage with these events
+  }
+  
+  // Remove deleted events from local storage
+  for (const href of syncResult.deletedEvents) {
+    // Delete from local storage
+  }
+  
+  // Save the new CTag
+  localStorage.setItem('ctag', syncResult.newCtag);
+}
+```
+
+### syncTodoChanges()
+
+Synchronizes changes between local todos and the remote calendar.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar to sync with
+</ParamField>
+
+<ParamField path="ctag" type="string" required>
+  The current CTag of the calendar (from your local cache)
+</ParamField>
+
+<ParamField path="localTodos" type="TodoRef[]" required>
+  Array of local todo references to compare against remote
+  
+  <Accordion title="TodoRef Properties">
+    <ParamField path="href" type="string" required>
+      The CalDAV resource URL of the todo
+    </ParamField>
+    
+    <ParamField path="etag" type="string" required>
+      The entity tag of the todo
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<SyncTodosResult>" type="SyncTodosResult">
+  A promise that resolves to an object containing the sync results
+  
+  <Accordion title="SyncTodosResult Properties">
+    <ResponseField name="changed" type="boolean" required>
+      Whether any changes were detected. If `false`, the calendar is unchanged and other fields will be empty.
+    </ResponseField>
+    
+    <ResponseField name="newCtag" type="string" required>
+      The updated CTag from the server. Save this for the next sync.
+    </ResponseField>
+    
+    <ResponseField name="newTodos" type="string[]" required>
+      Array of href URLs for todos that exist on the server but not locally. Fetch these with `getTodosByHref()`.
+    </ResponseField>
+    
+    <ResponseField name="updatedTodos" type="string[]" required>
+      Array of href URLs for todos that have different ETags (modified on server). Fetch these with `getTodosByHref()`.
+    </ResponseField>
+    
+    <ResponseField name="deletedTodos" type="string[]" required>
+      Array of href URLs for todos that exist locally but were deleted from the server. Remove these from local storage.
+    </ResponseField>
+  </Accordion>
+</ResponseField>
+
+```typescript
+// Assume you have stored these locally
+const storedCtag = '"67890"';
+const localTodos = [
+  { href: '/cal/todo1.ics', etag: '"xyz"' },
+  { href: '/cal/todo2.ics', etag: '"uvw"' }
+];
+
+// Check for changes
+const syncResult = await client.syncTodoChanges(
+  calendarUrl,
+  storedCtag,
+  localTodos
+);
+
+if (!syncResult.changed) {
+  console.log('Todos are up to date');
+} else {
+  // Fetch new and updated todos
+  const toFetch = [
+    ...syncResult.newTodos,
+    ...syncResult.updatedTodos
+  ];
+  
+  if (toFetch.length > 0) {
+    const todos = await client.getTodosByHref(calendarUrl, toFetch);
+    // Update local storage with these todos
+  }
+  
+  // Remove deleted todos from local storage
+  for (const href of syncResult.deletedTodos) {
+    // Delete from local storage
+  }
+  
+  // Save the new CTag
+  localStorage.setItem('todo_ctag', syncResult.newCtag);
+}
+```
+
+## Helper Method
+
+### getCtag()
+
+Fetches the current CTag for a given calendar URL. This is useful for obtaining the initial CTag before starting synchronization.
+
+<ParamField path="calendarUrl" type="string" required>
+  The URL of the calendar
+</ParamField>
+
+<ResponseField name="Promise<string>" type="string">
+  A promise that resolves to the CTag string
+</ResponseField>
+
+```typescript
+const ctag = await client.getCtag(calendarUrl);
+localStorage.setItem('ctag', ctag);
+```
+
+## Type Definitions
+
+### EventRef
+
+```typescript
+interface EventRef {
+  href: string;
+  etag: string;
+}
+```
+
+### SyncChangesResult
+
+```typescript
+interface SyncChangesResult {
+  changed: boolean;
+  newCtag: string;
+  newEvents: string[];
+  updatedEvents: string[];
+  deletedEvents: string[];
+}
+```
+
+### TodoRef
+
+```typescript
+type TodoRef = EventRef;
+```
+
+### SyncTodosResult
+
+```typescript
+interface SyncTodosResult {
+  changed: boolean;
+  newCtag: string;
+  newTodos: string[];
+  updatedTodos: string[];
+  deletedTodos: string[];
+}
+```
+
+## Complete Sync Example
+
+```typescript
+import { CalDAVClient, EventRef } from 'ts-caldav';
+
+class CalendarSync {
+  private client: CalDAVClient;
+  private calendarUrl: string;
+  
+  constructor(client: CalDAVClient, calendarUrl: string) {
+    this.client = client;
+    this.calendarUrl = calendarUrl;
+  }
+  
+  async initialSync() {
+    // First time sync - get all events
+    const events = await this.client.getEvents(this.calendarUrl, { all: true });
+    const ctag = await this.client.getCtag(this.calendarUrl);
+    
+    // Store events and ctag locally
+    const eventRefs: EventRef[] = events.map(e => ({
+      href: e.href,
+      etag: e.etag
+    }));
+    
+    localStorage.setItem('events', JSON.stringify(events));
+    localStorage.setItem('event_refs', JSON.stringify(eventRefs));
+    localStorage.setItem('ctag', ctag);
+    
+    return events;
+  }
+  
+  async sync() {
+    // Get stored data
+    const storedCtag = localStorage.getItem('ctag');
+    const storedRefs = JSON.parse(
+      localStorage.getItem('event_refs') || '[]'
+    );
+    const storedEvents = JSON.parse(
+      localStorage.getItem('events') || '[]'
+    );
+    
+    if (!storedCtag) {
+      return await this.initialSync();
+    }
+    
+    // Sync changes
+    const syncResult = await this.client.syncChanges(
+      this.calendarUrl,
+      storedCtag,
+      storedRefs
+    );
+    
+    if (!syncResult.changed) {
+      console.log('No changes detected');
+      return storedEvents;
+    }
+    
+    console.log(`Changes detected:`);
+    console.log(`- New: ${syncResult.newEvents.length}`);
+    console.log(`- Updated: ${syncResult.updatedEvents.length}`);
+    console.log(`- Deleted: ${syncResult.deletedEvents.length}`);
+    
+    // Fetch new and updated events
+    const toFetch = [
+      ...syncResult.newEvents,
+      ...syncResult.updatedEvents
+    ];
+    
+    let fetchedEvents = [];
+    if (toFetch.length > 0) {
+      fetchedEvents = await this.client.getEventsByHref(
+        this.calendarUrl,
+        toFetch
+      );
+    }
+    
+    // Update local storage
+    let events = storedEvents.filter(
+      (e: any) => !syncResult.deletedEvents.includes(e.href) &&
+                  !syncResult.updatedEvents.includes(e.href)
+    );
+    
+    events = [...events, ...fetchedEvents];
+    
+    const eventRefs: EventRef[] = events.map((e: any) => ({
+      href: e.href,
+      etag: e.etag
+    }));
+    
+    localStorage.setItem('events', JSON.stringify(events));
+    localStorage.setItem('event_refs', JSON.stringify(eventRefs));
+    localStorage.setItem('ctag', syncResult.newCtag);
+    
+    return events;
+  }
+}
+
+// Usage
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'basic',
+    username: 'user@example.com',
+    password: 'password'
+  }
+});
+
+const calendars = await client.getCalendars();
+const sync = new CalendarSync(client, calendars[0].url);
+
+// Initial sync
+const events = await sync.initialSync();
+
+// Later, check for updates
+setInterval(async () => {
+  const updatedEvents = await sync.sync();
+  console.log(`Total events: ${updatedEvents.length}`);
+}, 60000); // Check every minute
+```
+
+## Best Practices
+
+1. **Store CTags and ETags**: Always save the CTag and event ETags locally for efficient synchronization.
+
+2. **Check CTags First**: Before fetching individual events, check if the CTag has changed. If it hasn't, you can skip the sync.
+
+3. **Batch Fetch**: Use `getEventsByHref()` to fetch multiple changed events in a single request.
+
+4. **Handle Deletions**: Don't forget to remove deleted events from your local storage.
+
+5. **Sync Periodically**: Run sync operations periodically (e.g., every 1-5 minutes) to keep data fresh.
+
+6. **Initial Sync**: On first run or when local data is missing, fetch all events with `getEvents({ all: true })`.
+
+7. **Error Handling**: Implement retry logic for sync operations in case of network failures.

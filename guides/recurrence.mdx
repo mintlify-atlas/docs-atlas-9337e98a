@@ -1,0 +1,375 @@
+---
+title: Recurrence Rules
+description: Creating and managing recurring events in ts-caldav
+---
+
+## Overview
+
+ts-caldav supports creating recurring events using the `recurrenceRule` property, which implements the iCalendar RRULE specification. This allows you to create events that repeat daily, weekly, monthly, or yearly with fine-grained control.
+
+## RecurrenceRule Type
+
+The `RecurrenceRule` interface provides the following properties:
+
+```typescript src/models.ts
+export type RecurrenceRule = {
+  freq?: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+  interval?: number;
+  count?: number;
+  until?: Date;
+  wkst?: string;
+  byday?: string[];
+  bymonthday?: number[];
+  bymonth?: number[];
+};
+```
+
+### Property Descriptions
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `freq` | `"DAILY"` \| `"WEEKLY"` \| `"MONTHLY"` \| `"YEARLY"` | The frequency of recurrence |
+| `interval` | `number` | How often the event repeats (e.g., every 2 weeks) |
+| `count` | `number` | Total number of occurrences |
+| `until` | `Date` | End date for the recurrence |
+| `wkst` | `string` | Week start day (e.g., "MO" for Monday) |
+| `byday` | `string[]` | Days of the week (e.g., `["MO", "WE", "FR"]`) |
+| `bymonthday` | `number[]` | Days of the month (e.g., `[1, 15]`) |
+| `bymonth` | `number[]` | Months of the year (e.g., `[1, 6, 12]`) |
+
+<Note>
+You can use either `count` or `until` to limit recurrence, but not both.
+</Note>
+
+## Daily Recurrence
+
+### Every Day
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Daily Standup",
+  start: new Date("2025-07-01T09:00:00"),
+  end: new Date("2025-07-01T09:15:00"),
+  startTzid: "America/New_York",
+  endTzid: "America/New_York",
+  recurrenceRule: {
+    freq: "DAILY",
+    interval: 1
+  }
+});
+```
+
+### Every 2 Days for 10 Occurrences
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Medication Reminder",
+  start: new Date("2025-07-01T08:00:00"),
+  end: new Date("2025-07-01T08:05:00"),
+  recurrenceRule: {
+    freq: "DAILY",
+    interval: 2,
+    count: 10
+  }
+});
+```
+
+### Daily Until Specific Date
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Summer Workout",
+  start: new Date("2025-06-01T07:00:00"),
+  end: new Date("2025-06-01T08:00:00"),
+  recurrenceRule: {
+    freq: "DAILY",
+    until: new Date("2025-08-31T23:59:59")
+  }
+});
+```
+
+## Weekly Recurrence
+
+### Every Week on Specific Days
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Office Hours",
+  start: new Date("2025-07-01T14:00:00"),
+  end: new Date("2025-07-01T16:00:00"),
+  startTzid: "Europe/Berlin",
+  endTzid: "Europe/Berlin",
+  recurrenceRule: {
+    freq: "WEEKLY",
+    interval: 1,
+    byday: ["MO", "WE", "FR"]  // Monday, Wednesday, Friday
+  }
+});
+```
+
+### Every 2 Weeks
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Bi-weekly Team Meeting",
+  start: new Date("2025-07-01T10:00:00"),
+  end: new Date("2025-07-01T11:00:00"),
+  recurrenceRule: {
+    freq: "WEEKLY",
+    interval: 2,
+    byday: ["TU"]  // Every other Tuesday
+  }
+});
+```
+
+### Day Codes for byday
+
+| Code | Day |
+|------|-----|
+| `MO` | Monday |
+| `TU` | Tuesday |
+| `WE` | Wednesday |
+| `TH` | Thursday |
+| `FR` | Friday |
+| `SA` | Saturday |
+| `SU` | Sunday |
+
+## Monthly Recurrence
+
+### Every Month on Last Friday
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Monthly All-Hands",
+  start: new Date("2025-07-25T15:00:00"),
+  end: new Date("2025-07-25T16:00:00"),
+  recurrenceRule: {
+    freq: "MONTHLY",
+    interval: 1,
+    byday: ["FR"],
+    until: new Date("2025-12-31")
+  }
+});
+```
+
+### Specific Day of Month
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Monthly Report Due",
+  start: new Date("2025-07-01T23:59:00"),
+  end: new Date("2025-07-01T23:59:00"),
+  recurrenceRule: {
+    freq: "MONTHLY",
+    interval: 1,
+    bymonthday: [1]  // First day of each month
+  }
+});
+```
+
+### Multiple Days Each Month
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Payroll Processing",
+  start: new Date("2025-07-01T09:00:00"),
+  end: new Date("2025-07-01T10:00:00"),
+  recurrenceRule: {
+    freq: "MONTHLY",
+    bymonthday: [1, 15]  // 1st and 15th of each month
+  }
+});
+```
+
+## Yearly Recurrence
+
+### Annual Event
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Company Anniversary",
+  start: new Date("2025-07-15T00:00:00"),
+  end: new Date("2025-07-15T23:59:59"),
+  wholeDay: true,
+  recurrenceRule: {
+    freq: "YEARLY",
+    interval: 1
+  }
+});
+```
+
+### Quarterly Events
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Quarterly Review",
+  start: new Date("2025-03-31T16:00:00"),
+  end: new Date("2025-03-31T17:00:00"),
+  recurrenceRule: {
+    freq: "YEARLY",
+    bymonth: [3, 6, 9, 12],  // March, June, September, December
+    bymonthday: [31]
+  }
+});
+```
+
+## How Recurrence Rules are Stored
+
+When you create a recurring event, ts-caldav converts the `RecurrenceRule` into an iCalendar RRULE property:
+
+```typescript src/client.ts
+if (event.recurrenceRule) {
+  const r = event.recurrenceRule;
+  const rruleProps: Record<string, string | number> = {};
+  if (r.freq) rruleProps.FREQ = r.freq;
+  if (r.interval) rruleProps.INTERVAL = r.interval;
+  if (r.count) rruleProps.COUNT = r.count;
+  if (event.wholeDay && r.until) {
+    rruleProps.UNTIL = ICAL.Time.fromDateString(
+      r.until.toISOString().split("T")[0]
+    ).toString();
+  } else if (r.until) {
+    rruleProps.UNTIL = ICAL.Time.fromJSDate(r.until, true).toString();
+  }
+  
+  if (r.byday) rruleProps.BYDAY = r.byday.join(",");
+  if (r.bymonthday) rruleProps.BYMONTHDAY = r.bymonthday.join(",");
+  if (r.bymonth) rruleProps.BYMONTH = r.bymonth.join(",");
+  vevent.addPropertyWithValue("rrule", rruleProps);
+}
+```
+
+This produces iCalendar output like:
+
+```ics
+BEGIN:VEVENT
+RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE,FR
+DTSTART:20250701T140000Z
+DTEND:20250701T160000Z
+SUMMARY:Office Hours
+END:VEVENT
+```
+
+## Parsing Recurrence Rules
+
+When fetching events, ts-caldav automatically parses RRULE properties back into `RecurrenceRule` objects:
+
+```typescript src/utils/parser.ts
+function parseRecurrence(recur: ICAL.Recur): RecurrenceRule {
+  const freqMap = {
+    DAILY: "DAILY",
+    WEEKLY: "WEEKLY",
+    MONTHLY: "MONTHLY",
+    YEARLY: "YEARLY",
+  } as const;
+  const freq = freqMap[recur.freq as keyof typeof freqMap] || undefined;
+
+  const byday = recur.parts.BYDAY
+    ? recur.parts.BYDAY.map((day: string) => day)
+    : undefined;
+  const bymonthday = recur.parts.BYMONTHDAY
+    ? recur.parts.BYMONTHDAY.map((day: number) => day)
+    : undefined;
+  const bymonth = recur.parts.BYMONTH
+    ? recur.parts.BYMONTH.map((month: number) => month)
+    : undefined;
+  const wkst = recur.wkst ? recur.wkst.toString() : undefined;
+
+  return {
+    freq,
+    interval: recur.interval,
+    count: recur.count ? recur.count : undefined,
+    until: recur.until ? recur.until.toJSDate() : undefined,
+    wkst,
+    byday,
+    bymonthday,
+    bymonth,
+  };
+}
+```
+
+## Complex Recurrence Example
+
+Combining multiple properties for complex patterns:
+
+```typescript
+// Every last Friday of each month in Q3 and Q4
+await client.createEvent(calendar.url, {
+  summary: "End of Month Review",
+  start: new Date("2025-07-25T17:00:00"),
+  end: new Date("2025-07-25T18:00:00"),
+  startTzid: "America/New_York",
+  endTzid: "America/New_York",
+  recurrenceRule: {
+    freq: "MONTHLY",
+    interval: 1,
+    byday: ["FR"],
+    bymonth: [7, 8, 9, 10, 11, 12],  // July through December
+    until: new Date("2025-12-31")
+  }
+});
+```
+
+## Retrieving Recurring Events
+
+When you fetch events, recurring events include their recurrence rules:
+
+```typescript
+const events = await client.getEvents(calendar.url, { all: true });
+
+events.forEach(event => {
+  if (event.recurrenceRule) {
+    console.log(`${event.summary} repeats ${event.recurrenceRule.freq}`);
+    
+    if (event.recurrenceRule.count) {
+      console.log(`Total occurrences: ${event.recurrenceRule.count}`);
+    }
+    
+    if (event.recurrenceRule.until) {
+      console.log(`Until: ${event.recurrenceRule.until}`);
+    }
+    
+    if (event.recurrenceRule.byday) {
+      console.log(`On days: ${event.recurrenceRule.byday.join(', ')}`);
+    }
+  }
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use count or until" icon="calendar-check">
+    Always set either `count` or `until` to prevent infinite recurrence, unless you specifically need an event that repeats forever.
+  </Card>
+  
+  <Card title="Test with your server" icon="server">
+    Different CalDAV servers may have varying support for complex recurrence rules. Test your patterns with your target server.
+  </Card>
+  
+  <Card title="Consider timezones" icon="clock">
+    When using recurring events across daylight saving time changes, specify timezones using `startTzid` and `endTzid`.
+  </Card>
+  
+  <Card title="Keep it simple" icon="lightbulb">
+    Start with simple patterns and add complexity only when needed. Simpler rules are more compatible across servers.
+  </Card>
+</CardGroup>
+
+## Limitations
+
+<Warning>
+ts-caldav currently supports the most common recurrence patterns. Advanced features like BYSETPOS, BYYEARDAY, and BYWEEKNO are not yet supported.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Timezone Support" icon="globe" href="/guides/timezone-support">
+    Learn how to handle timezones in recurring events
+  </Card>
+  
+  <Card title="Creating Events" icon="calendar-plus" href="/api/event-operations">
+    Full API reference for creating events
+  </Card>
+</CardGroup>

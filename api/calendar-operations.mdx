@@ -1,0 +1,152 @@
+---
+title: 'Calendar Operations'
+description: 'Methods for discovering and managing CalDAV calendars'
+---
+
+## Overview
+
+Calendar operations allow you to discover and retrieve calendars from a CalDAV server.
+
+## Methods
+
+### getCalendars()
+
+Fetches all calendars from the CalDAV server for the authenticated user.
+
+<ResponseField name="Promise<Calendar[]>" type="Calendar[]">
+  A promise that resolves to an array of Calendar objects
+</ResponseField>
+
+**Throws:** An error if calendar home is not found or the request fails.
+
+```typescript
+const calendars = await client.getCalendars();
+
+calendars.forEach(calendar => {
+  console.log(`Calendar: ${calendar.displayName}`);
+  console.log(`URL: ${calendar.url}`);
+  console.log(`Color: ${calendar.color}`);
+  console.log(`Supported: ${calendar.supportedComponents.join(', ')}`);
+});
+```
+
+## Types
+
+### Calendar
+
+Represents a CalDAV calendar.
+
+<ResponseField name="displayName" type="string" required>
+  The human-readable name of the calendar
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  The CalDAV URL of the calendar (used for event/todo operations)
+</ResponseField>
+
+<ResponseField name="ctag" type="string">
+  The collection tag (CTag) used for change detection and synchronization
+</ResponseField>
+
+<ResponseField name="supportedComponents" type="SupportedComponent[]" required>
+  Array of supported calendar component types
+  
+  <Accordion title="SupportedComponent Values">
+    - `"VEVENT"` - Calendar events
+    - `"VTODO"` - Todo/task items
+    - `"VJOURNAL"` - Journal entries
+    - `"VFREEBUSY"` - Free/busy time information
+    - `"VTIMEZONE"` - Timezone definitions
+  </Accordion>
+</ResponseField>
+
+<ResponseField name="color" type="string">
+  The calendar color in hex format (e.g., `"#FF5733"`) or CSS color format
+</ResponseField>
+
+### SupportedComponent
+
+```typescript
+type SupportedComponent =
+  | "VEVENT"
+  | "VTODO"
+  | "VJOURNAL"
+  | "VFREEBUSY"
+  | "VTIMEZONE";
+```
+
+## Example: Finding Event Calendars
+
+```typescript
+import { CalDAVClient } from 'ts-caldav';
+
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'basic',
+    username: 'user@example.com',
+    password: 'password'
+  }
+});
+
+// Get all calendars
+const calendars = await client.getCalendars();
+
+// Filter calendars that support events
+const eventCalendars = calendars.filter(cal =>
+  cal.supportedComponents.includes('VEVENT')
+);
+
+console.log(`Found ${eventCalendars.length} event calendars`);
+
+// Find a specific calendar by name
+const workCalendar = calendars.find(
+  cal => cal.displayName === 'Work'
+);
+
+if (workCalendar) {
+  console.log(`Work calendar URL: ${workCalendar.url}`);
+  console.log(`Work calendar CTag: ${workCalendar.ctag}`);
+}
+```
+
+## Example: Checking Calendar Support
+
+```typescript
+const calendars = await client.getCalendars();
+
+for (const calendar of calendars) {
+  const features = [];
+  
+  if (calendar.supportedComponents.includes('VEVENT')) {
+    features.push('Events');
+  }
+  if (calendar.supportedComponents.includes('VTODO')) {
+    features.push('Todos');
+  }
+  if (calendar.supportedComponents.includes('VJOURNAL')) {
+    features.push('Journals');
+  }
+  
+  console.log(`${calendar.displayName}: ${features.join(', ')}`);
+}
+```
+
+## Type Definition
+
+```typescript
+interface Calendar {
+  displayName: string;
+  url: string;
+  ctag?: string;
+  supportedComponents: SupportedComponent[];
+  color?: string;
+}
+
+type SupportedComponent =
+  | "VEVENT"
+  | "VTODO"
+  | "VJOURNAL"
+  | "VFREEBUSY"
+  | "VTIMEZONE";
+```

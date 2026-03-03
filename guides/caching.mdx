@@ -1,0 +1,345 @@
+---
+title: Caching Client State
+description: Save and restore CalDAV client state to avoid repeated server requests
+---
+
+## Overview
+
+ts-caldav provides built-in caching functionality to save and restore client state. This allows you to avoid the expensive discovery process and validation requests when creating new client instances, significantly improving performance for applications that frequently reconnect to CalDAV servers.
+
+## Why Use Caching?
+
+When you call `CalDAVClient.create()`, the library performs several operations:
+
+1. Validates credentials with the CalDAV server
+2. Discovers the CalDAV endpoint (tries `.well-known/caldav` and multiple paths)
+3. Fetches the user principal URL
+4. Fetches the calendar home URL
+
+With caching, you can skip steps 2-4 by restoring a previously saved client state, reducing initialization time from potentially seconds to milliseconds.
+
+## The CalDAVClientCache Type
+
+The cache is a simple object containing the essential client configuration:
+
+```typescript src/models.ts
+export interface CalDAVClientCache {
+  userPrincipal: string;
+  calendarHome: string;
+  prodId?: string;
+}
+```
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `userPrincipal` | `string` | The user's principal URL on the CalDAV server |
+| `calendarHome` | `string` | The calendar home URL where calendars are stored |
+| `prodId` | `string` (optional) | The product identifier used in iCalendar data |
+
+## Exporting Cache
+
+After creating a client successfully, you can export its state:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "user",
+    password: "password"
+  }
+});
+
+// Export the cache
+const cache = client.exportCache();
+
+console.log(cache);
+// {
+//   userPrincipal: "/principals/users/user/",
+//   calendarHome: "/calendars/user/",
+//   prodId: "-//ts-caldav.//CalDAV Client//EN"
+// }
+```
+
+## Storing the Cache
+
+You can store the cache in various ways depending on your environment:
+
+### Browser (localStorage)
+
+```typescript
+const cache = client.exportCache();
+localStorage.setItem('caldav-cache', JSON.stringify(cache));
+```
+
+### Node.js (file system)
+
+```typescript
+import fs from 'fs/promises';
+
+const cache = client.exportCache();
+await fs.writeFile(
+  './caldav-cache.json',
+  JSON.stringify(cache, null, 2)
+);
+```
+
+### React Native (AsyncStorage)
+
+```typescript
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const cache = client.exportCache();
+await AsyncStorage.setItem('caldav-cache', JSON.stringify(cache));
+```
+
+### Database
+
+```typescript
+// Example with a database
+const cache = client.exportCache();
+await db.userSettings.upsert({
+  where: { userId: currentUser.id },
+  update: { caldavCache: cache },
+  create: { userId: currentUser.id, caldavCache: cache }
+});
+```
+
+## Restoring from Cache
+
+Use `CalDAVClient.createFromCache()` to restore a client without re-discovery:
+
+```typescript src/client.ts
+static createFromCache(
+  options: CalDAVOptions,
+  cache: CalDAVClientCache,
+): CalDAVClient {
+  const client = new CalDAVClient(options);
+  client.userPrincipal = client.resolveUrl(cache.userPrincipal);
+  client.calendarHome = client.resolveUrl(cache.calendarHome);
+  if (cache.prodId) client.prodId = cache.prodId;
+  return client;
+}
+```
+
+### Example: Restoring from localStorage
+
+```typescript
+const cachedData = localStorage.getItem('caldav-cache');
+
+if (cachedData) {
+  const cache = JSON.parse(cachedData);
+  
+  const client = CalDAVClient.createFromCache({
+    baseUrl: "https://caldav.example.com",
+    auth: {
+      type: "basic",
+      username: "user",
+      password: "password"
+    }
+  }, cache);
+  
+  // Client is ready to use immediately
+  const calendars = await client.getCalendars();
+} else {
+  // First time - use create() and save cache
+  const client = await CalDAVClient.create({ /* ... */ });
+  localStorage.setItem('caldav-cache', JSON.stringify(client.exportCache()));
+}
+```
+
+## Complete Example with Error Handling
+
+A production-ready implementation with fallback:
+
+```typescript
+async function getCalDAVClient(credentials: {
+  baseUrl: string;
+  username: string;
+  password: string;
+}): Promise<CalDAVClient> {
+  const cacheKey = `caldav-cache-${credentials.username}`;
+  const cachedData = localStorage.getItem(cacheKey);
+  
+  // Try to use cache first
+  if (cachedData) {
+    try {
+      const cache = JSON.parse(cachedData);
+      const client = CalDAVClient.createFromCache({
+        baseUrl: credentials.baseUrl,
+        auth: {
+          type: "basic",
+          username: credentials.username,
+          password: credentials.password
+        }
+      }, cache);
+      
+      // Verify the cache is still valid by making a simple request
+      await client.getCalendars();
+      
+      return client;
+    } catch (error) {
+      console.warn('Cached client state is invalid, re-discovering...', error);
+      // Clear invalid cache
+      localStorage.removeItem(cacheKey);
+    }
+  }
+  
+  // No cache or cache invalid - do full discovery
+  const client = await CalDAVClient.create({
+    baseUrl: credentials.baseUrl,
+    auth: {
+      type: "basic",
+      username: credentials.username,
+      password: credentials.password
+    }
+  });
+  
+  // Save cache for next time
+  localStorage.setItem(cacheKey, JSON.stringify(client.exportCache()));
+  
+  return client;
+}
+
+// Usage
+const client = await getCalDAVClient({
+  baseUrl: "https://caldav.example.com",
+  username: "user",
+  password: "password"
+});
+```
+
+## Cache Invalidation
+
+You should invalidate the cache when:
+
+<CardGroup cols={2}>
+  <Card title="Server Changes" icon="server">
+    The CalDAV server endpoint, structure, or configuration changes
+  </Card>
+  
+  <Card title="Authentication Errors" icon="lock">
+    You receive authentication errors that might indicate server changes
+  </Card>
+  
+  <Card title="User Changes" icon="user">
+    The user changes their CalDAV server or account settings
+  </Card>
+  
+  <Card title="Manual Reset" icon="rotate">
+    The user explicitly requests to reset or re-sync their connection
+  </Card>
+</CardGroup>
+
+### Detecting Invalid Cache
+
+```typescript
+try {
+  const client = CalDAVClient.createFromCache(options, cache);
+  const calendars = await client.getCalendars();
+} catch (error) {
+  if (error.response?.status === 401) {
+    // Authentication failed - credentials may have changed
+    console.log('Invalid credentials');
+  } else if (error.response?.status === 404) {
+    // Calendar home not found - server structure may have changed
+    console.log('Invalid cache - rediscovering');
+    localStorage.removeItem('caldav-cache');
+    // Re-create with discovery
+    const newClient = await CalDAVClient.create(options);
+  }
+}
+```
+
+## Performance Comparison
+
+<CodeGroup>
+```typescript Without Cache
+// Takes 2-5 seconds depending on server
+const start = Date.now();
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: { type: "basic", username: "user", password: "pass" }
+});
+console.log(`Created in ${Date.now() - start}ms`);
+// Created in 3245ms
+```
+
+```typescript With Cache
+// Takes 100-500ms
+const start = Date.now();
+const cache = JSON.parse(localStorage.getItem('caldav-cache'));
+const client = CalDAVClient.createFromCache({
+  baseUrl: "https://caldav.example.com",
+  auth: { type: "basic", username: "user", password: "pass" }
+}, cache);
+console.log(`Created in ${Date.now() - start}ms`);
+// Created in 12ms
+```
+</CodeGroup>
+
+## Multi-Account Support
+
+For applications supporting multiple CalDAV accounts, use unique cache keys:
+
+```typescript
+function getCacheKey(baseUrl: string, username: string): string {
+  const url = new URL(baseUrl);
+  return `caldav-cache-${url.host}-${username}`;
+}
+
+// Save cache
+const cacheKey = getCacheKey(client.baseUrl, username);
+localStorage.setItem(cacheKey, JSON.stringify(client.exportCache()));
+
+// Load cache
+const cacheKey = getCacheKey(baseUrl, username);
+const cachedData = localStorage.getItem(cacheKey);
+if (cachedData) {
+  const cache = JSON.parse(cachedData);
+  const client = CalDAVClient.createFromCache(options, cache);
+}
+```
+
+## Security Considerations
+
+<Warning>
+The cache does not contain authentication credentials, only server paths. However, these paths may reveal information about your server structure.
+</Warning>
+
+Best practices:
+
+- Don't share cache files between different users
+- Clear cache on logout in web applications
+- Use secure storage mechanisms in mobile apps
+- Consider encrypting cached data in sensitive applications
+
+## When NOT to Use Cache
+
+<AccordionGroup>
+  <Accordion title="Short-lived scripts">
+    For one-off scripts or CLI tools that run infrequently, caching adds complexity without significant benefit.
+  </Accordion>
+  
+  <Accordion title="Shared credentials">
+    When multiple users share the same CalDAV account, cached paths might differ and cause conflicts.
+  </Accordion>
+  
+  <Accordion title="Dynamic servers">
+    If your CalDAV server frequently changes its structure or moves calendar homes, caching may cause more issues than it solves.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Configuration" icon="gear" href="/api/caldav-client">
+    Learn about all client configuration options
+  </Card>
+  
+  <Card title="Synchronization" icon="arrows-rotate" href="/concepts/synchronization">
+    Implement efficient calendar syncing
+  </Card>
+</CardGroup>

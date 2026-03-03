@@ -1,0 +1,305 @@
+---
+title: "Calendars"
+description: "Fetch and work with CalDAV calendar collections"
+icon: "calendar"
+---
+
+Calendars in CalDAV are collections that contain events and todos. Each calendar has its own properties, supported components, and synchronization tags.
+
+## Calendar Type
+
+The `Calendar` interface represents a CalDAV calendar collection:
+
+```typescript models.ts
+export interface Calendar {
+  displayName: string;
+  url: string;
+  ctag?: string;
+  supportedComponents: SupportedComponent[];
+  color?: string;
+}
+```
+
+### Properties
+
+<ParamField path="displayName" type="string" required>
+  The human-readable name of the calendar (e.g., "Work", "Personal", "Family")
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  The CalDAV URL for this calendar. Use this URL for all event and todo operations.
+</ParamField>
+
+<ParamField path="ctag" type="string">
+  The collection tag (CTag) that changes whenever any item in the calendar is added, modified, or deleted. Used for efficient synchronization.
+</ParamField>
+
+<ParamField path="supportedComponents" type="SupportedComponent[]" required>
+  Array of component types this calendar supports. Common values:
+  - `VEVENT` - Calendar events
+  - `VTODO` - Todo items
+  - `VJOURNAL` - Journal entries
+  - `VFREEBUSY` - Free/busy information
+  - `VTIMEZONE` - Timezone definitions
+</ParamField>
+
+<ParamField path="color" type="string">
+  Optional calendar color in hex format (e.g., `#FF6B6B`). Not all CalDAV servers support this property.
+</ParamField>
+
+## Fetching Calendars
+
+Retrieve all calendars for the authenticated user:
+
+```typescript
+const calendars = await client.getCalendars();
+
+for (const calendar of calendars) {
+  console.log(`Calendar: ${calendar.displayName}`);
+  console.log(`  URL: ${calendar.url}`);
+  console.log(`  Supports: ${calendar.supportedComponents.join(', ')}`);
+  console.log(`  Color: ${calendar.color || 'none'}`);
+  console.log(`  CTag: ${calendar.ctag}`);
+}
+```
+
+### How It Works
+
+The `getCalendars()` method performs a PROPFIND request on the calendar home:
+
+```typescript client.ts
+public async getCalendars(): Promise<Calendar[]> {
+  if (!this.calendarHome) throw new Error("Calendar home not found.");
+
+  const requestBody = `
+    <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:apple="http://apple.com/ns/ical/">
+      <d:prop>
+        <d:resourcetype/>
+        <d:displayname/>
+        <cs:getctag/>
+        <c:supported-calendar-component-set/>
+        <apple:calendar-color/>
+      </d:prop>
+    </d:propfind>`;
+
+  const response = await this.httpClient.request({
+    method: "PROPFIND",
+    url: this.calendarHome,
+    data: requestBody,
+    headers: { Depth: "1", "Content-Type": XML_CT },
+    validateStatus: (s) => s >= 200 && s < 300,
+  });
+
+  const calendars = await parseCalendars(response.data);
+  return calendars.map((cal) => ({
+    ...cal,
+    url: this.resolveUrl(cal.url),
+  }));
+}
+```
+
+## Supported Components
+
+Before creating events or todos in a calendar, check which components it supports:
+
+```typescript
+const calendars = await client.getCalendars();
+
+// Find calendars that support events
+const eventCalendars = calendars.filter(cal => 
+  cal.supportedComponents.includes('VEVENT')
+);
+
+// Find calendars that support todos
+const todoCalendars = calendars.filter(cal => 
+  cal.supportedComponents.includes('VTODO')
+);
+
+// Find calendars that support both
+const fullCalendars = calendars.filter(cal => 
+  cal.supportedComponents.includes('VEVENT') &&
+  cal.supportedComponents.includes('VTODO')
+);
+```
+
+<Warning>
+  Not all calendars support all component types. Always check `supportedComponents` before creating items to avoid errors.
+</Warning>
+
+## Calendar Colors
+
+Some CalDAV servers (like Apple Calendar Server) support calendar colors:
+
+```typescript
+const calendars = await client.getCalendars();
+
+calendars.forEach(calendar => {
+  if (calendar.color) {
+    console.log(`${calendar.displayName}: ${calendar.color}`);
+  }
+});
+```
+
+Colors are typically in hex format:
+
+- `#FF6B6B` - Red
+- `#4ECDC4` - Teal
+- `#45B7D1` - Blue
+- `#FFA07A` - Orange
+
+<Info>
+  Calendar colors are part of Apple's CalDAV extensions. Not all servers support this property. Check if `calendar.color` is defined before using it.
+</Info>
+
+## Working with Calendar URLs
+
+The calendar URL is essential for all calendar operations. Store it for use with events and todos:
+
+```typescript
+const calendars = await client.getCalendars();
+const workCalendar = calendars.find(cal => 
+  cal.displayName === 'Work'
+);
+
+if (workCalendar) {
+  // Use the calendar URL for operations
+  const events = await client.getEvents(workCalendar.url);
+  
+  await client.createEvent(workCalendar.url, {
+    summary: 'Team Meeting',
+    start: new Date('2024-03-15T10:00:00'),
+    end: new Date('2024-03-15T11:00:00')
+  });
+}
+```
+
+## Calendar Synchronization
+
+The `ctag` (collection tag) is crucial for efficient synchronization:
+
+```typescript
+// Initial fetch
+const calendars = await client.getCalendars();
+const calendar = calendars[0];
+
+// Store the ctag
+let savedCtag = calendar.ctag;
+
+// Later, check if calendar has changed
+const newCtag = await client.getCtag(calendar.url);
+
+if (newCtag !== savedCtag) {
+  console.log('Calendar has changed, sync needed');
+  savedCtag = newCtag;
+  // Perform sync...
+} else {
+  console.log('Calendar unchanged, no sync needed');
+}
+```
+
+See the [Synchronization](/concepts/synchronization) page for detailed sync patterns.
+
+## Practical Examples
+
+### Find a Specific Calendar
+
+```typescript
+const calendars = await client.getCalendars();
+
+// By name
+const personal = calendars.find(cal => 
+  cal.displayName.toLowerCase() === 'personal'
+);
+
+// By color
+const redCalendars = calendars.filter(cal => 
+  cal.color?.toLowerCase().includes('ff')
+);
+
+// First calendar that supports events
+const eventCalendar = calendars.find(cal => 
+  cal.supportedComponents.includes('VEVENT')
+);
+```
+
+### List All Calendars with Details
+
+```typescript
+const calendars = await client.getCalendars();
+
+console.log(`Found ${calendars.length} calendars:\n`);
+
+calendars.forEach((cal, index) => {
+  console.log(`${index + 1}. ${cal.displayName}`);
+  console.log(`   URL: ${cal.url}`);
+  console.log(`   Supports: ${cal.supportedComponents.join(', ')}`);
+  if (cal.color) console.log(`   Color: ${cal.color}`);
+  console.log(`   CTag: ${cal.ctag}\n`);
+});
+```
+
+### Filter by Capabilities
+
+```typescript
+const calendars = await client.getCalendars();
+
+// Separate by type
+const byCapability = {
+  events: calendars.filter(cal => 
+    cal.supportedComponents.includes('VEVENT')
+  ),
+  todos: calendars.filter(cal => 
+    cal.supportedComponents.includes('VTODO')
+  ),
+  both: calendars.filter(cal => 
+    cal.supportedComponents.includes('VEVENT') &&
+    cal.supportedComponents.includes('VTODO')
+  )
+};
+
+console.log(`Event calendars: ${byCapability.events.length}`);
+console.log(`Todo calendars: ${byCapability.todos.length}`);
+console.log(`Full calendars: ${byCapability.both.length}`);
+```
+
+## Common Patterns
+
+### Caching Calendar List
+
+Calendar lists change rarely, so caching is recommended:
+
+```typescript
+let cachedCalendars: Calendar[] | null = null;
+let cacheTime: number | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+async function getCalendars() {
+  const now = Date.now();
+  
+  if (cachedCalendars && cacheTime && (now - cacheTime) < CACHE_DURATION) {
+    return cachedCalendars;
+  }
+  
+  cachedCalendars = await client.getCalendars();
+  cacheTime = now;
+  return cachedCalendars;
+}
+```
+
+### Default Calendar Selection
+
+```typescript
+const calendars = await client.getCalendars();
+
+// Get the first calendar that supports events
+const defaultCalendar = calendars.find(cal => 
+  cal.supportedComponents.includes('VEVENT')
+);
+
+if (!defaultCalendar) {
+  throw new Error('No calendar found that supports events');
+}
+
+// Use it
+await client.createEvent(defaultCalendar.url, eventData);
+```

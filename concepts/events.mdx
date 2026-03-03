@@ -1,0 +1,551 @@
+---
+title: "Events"
+description: "Create, update, and manage calendar events"
+icon: "calendar-day"
+---
+
+Events are the core component of any calendar system. ts-caldav provides comprehensive support for creating, reading, updating, and deleting events with features like recurrence, alarms, and timezone handling.
+
+## Event Type
+
+The `Event` interface represents a calendar event:
+
+```typescript models.ts
+export interface Event {
+  uid: string;
+  summary: string;
+  start: Date;
+  end: Date;
+  description?: string;
+  location?: string;
+  status?: EventStatus;
+  etag: string;
+  href: string;
+  wholeDay?: boolean;
+  recurrenceRule?: RecurrenceRule;
+  startTzid?: string;
+  endTzid?: string;
+  alarms?: Alarm[];
+}
+```
+
+### Core Properties
+
+<ParamField path="uid" type="string" required>
+  Unique identifier for the event. Auto-generated if not provided during creation.
+</ParamField>
+
+<ParamField path="summary" type="string" required>
+  The event title or summary (e.g., "Team Meeting", "Doctor Appointment").
+</ParamField>
+
+<ParamField path="start" type="Date" required>
+  Event start date and time.
+</ParamField>
+
+<ParamField path="end" type="Date" required>
+  Event end date and time.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Detailed description or notes about the event.
+</ParamField>
+
+<ParamField path="location" type="string">
+  Where the event takes place (e.g., "Conference Room A", "123 Main St").
+</ParamField>
+
+<ParamField path="status" type="EventStatus">
+  Event status: `"TENTATIVE"`, `"CONFIRMED"`, or `"CANCELLED"`.
+</ParamField>
+
+### Synchronization Properties
+
+<ParamField path="etag" type="string" required>
+  Entity tag for concurrency control. Changes whenever the event is modified.
+</ParamField>
+
+<ParamField path="href" type="string" required>
+  The CalDAV URL for this specific event.
+</ParamField>
+
+### Advanced Properties
+
+<ParamField path="wholeDay" type="boolean">
+  Set to `true` for all-day events. When true, time components are ignored.
+</ParamField>
+
+<ParamField path="recurrenceRule" type="RecurrenceRule">
+  Defines repeating patterns. See [Recurrence Guide](/guides/recurrence) for details.
+</ParamField>
+
+<ParamField path="startTzid" type="string">
+  Timezone identifier for the start time (e.g., `"America/New_York"`).
+</ParamField>
+
+<ParamField path="endTzid" type="string">
+  Timezone identifier for the end time.
+</ParamField>
+
+<ParamField path="alarms" type="Alarm[]">
+  Array of alarm/reminder configurations for this event.
+</ParamField>
+
+## Creating Events
+
+### Basic Event
+
+```typescript
+const calendars = await client.getCalendars();
+const calendar = calendars[0];
+
+const result = await client.createEvent(calendar.url, {
+  summary: 'Team Standup',
+  start: new Date('2024-03-15T09:00:00'),
+  end: new Date('2024-03-15T09:30:00'),
+  description: 'Daily team sync',
+  location: 'Conference Room A'
+});
+
+console.log(`Created event with UID: ${result.uid}`);
+console.log(`Event URL: ${result.href}`);
+console.log(`ETag: ${result.etag}`);
+```
+
+The method signature:
+
+```typescript client.ts
+public async createEvent(
+  calendarUrl: string,
+  eventData: PartialBy<Event, "uid" | "href" | "etag">,
+): Promise<{ uid: string; href: string; etag: string; newCtag: string }>
+```
+
+### All-Day Events
+
+For events that last entire days without specific times:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Company Holiday',
+  start: new Date('2024-07-04T00:00:00'),
+  end: new Date('2024-07-04T00:00:00'),
+  wholeDay: true
+});
+```
+
+<Info>
+  For all-day events, set `wholeDay: true` and use dates with midnight times. The implementation automatically handles the iCalendar DATE format.
+</Info>
+
+### Multi-Day Events
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Conference',
+  start: new Date('2024-06-10T00:00:00'),
+  end: new Date('2024-06-12T00:00:00'),
+  wholeDay: true,
+  location: 'San Francisco, CA',
+  description: 'Annual developer conference'
+});
+```
+
+## Fetching Events
+
+### Get All Events
+
+By default, fetches events for the next 3 weeks:
+
+```typescript
+const events = await client.getEvents(calendar.url);
+
+events.forEach(event => {
+  console.log(`${event.summary}: ${event.start} - ${event.end}`);
+});
+```
+
+### Get Events in Date Range
+
+```typescript
+const start = new Date('2024-03-01T00:00:00');
+const end = new Date('2024-03-31T23:59:59');
+
+const marchEvents = await client.getEvents(calendar.url, {
+  start,
+  end
+});
+
+console.log(`Found ${marchEvents.length} events in March`);
+```
+
+### Get All Events (No Filter)
+
+```typescript
+const allEvents = await client.getEvents(calendar.url, {
+  all: true
+});
+```
+
+<Warning>
+  Using `all: true` can be slow for calendars with many events. Use date ranges when possible.
+</Warning>
+
+## Updating Events
+
+Update an existing event by providing the modified event object:
+
+```typescript
+const events = await client.getEvents(calendar.url);
+const event = events.find(e => e.summary === 'Team Standup');
+
+if (event) {
+  // Modify properties
+  event.start = new Date('2024-03-15T10:00:00');
+  event.end = new Date('2024-03-15T10:30:00');
+  event.location = 'Conference Room B';
+  
+  const result = await client.updateEvent(calendar.url, event);
+  console.log(`Updated with new ETag: ${result.etag}`);
+}
+```
+
+The method signature:
+
+```typescript client.ts
+public async updateEvent(
+  calendarUrl: string,
+  event: Event,
+): Promise<{ uid: string; href: string; etag: string; newCtag: string }>
+```
+
+<Info>
+  Updates use the `If-Match` header with the event's ETag for optimistic concurrency control. This prevents conflicting updates.
+</Info>
+
+## Deleting Events
+
+Delete an event by its UID:
+
+```typescript
+const events = await client.getEvents(calendar.url);
+const event = events[0];
+
+await client.deleteEvent(calendar.url, event.uid, event.etag);
+console.log('Event deleted');
+```
+
+The ETag parameter is optional but recommended:
+
+```typescript client.ts
+public async deleteEvent(
+  calendarUrl: string,
+  eventUid: string,
+  etag?: string,
+): Promise<void>
+```
+
+## Event Alarms
+
+Events can have multiple alarms (reminders). The `Alarm` type supports different action types:
+
+```typescript models.ts
+export type Alarm =
+  | {
+      action: "DISPLAY";
+      trigger: string;
+      description?: string;
+    }
+  | {
+      action: "EMAIL";
+      trigger: string;
+      description?: string;
+      summary?: string;
+      attendees: string[];
+    }
+  | {
+      action: "AUDIO";
+      trigger: string;
+    };
+```
+
+### Display Alarm
+
+Shows a notification:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Important Meeting',
+  start: new Date('2024-03-15T14:00:00'),
+  end: new Date('2024-03-15T15:00:00'),
+  alarms: [
+    {
+      action: 'DISPLAY',
+      trigger: '-PT15M',  // 15 minutes before
+      description: 'Meeting starts in 15 minutes'
+    }
+  ]
+});
+```
+
+### Email Alarm
+
+Sends an email reminder:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Project Deadline',
+  start: new Date('2024-03-20T17:00:00'),
+  end: new Date('2024-03-20T17:00:00'),
+  alarms: [
+    {
+      action: 'EMAIL',
+      trigger: '-P1D',  // 1 day before
+      summary: 'Deadline Tomorrow',
+      description: 'Project X deliverables due tomorrow',
+      attendees: ['mailto:team@example.com']
+    }
+  ]
+});
+```
+
+### Multiple Alarms
+
+```typescript
+alarms: [
+  {
+    action: 'DISPLAY',
+    trigger: '-P1D',  // 1 day before
+    description: 'Event tomorrow'
+  },
+  {
+    action: 'DISPLAY',
+    trigger: '-PT1H',  // 1 hour before
+    description: 'Event in 1 hour'
+  },
+  {
+    action: 'DISPLAY',
+    trigger: '-PT15M',  // 15 minutes before
+    description: 'Event starting soon'
+  }
+]
+```
+
+### Trigger Format
+
+Triggers use ISO 8601 duration format:
+
+- `PT15M` - 15 minutes
+- `PT1H` - 1 hour
+- `P1D` - 1 day
+- `P1W` - 1 week
+
+Prefix with `-` for triggers before the event:
+
+- `-PT15M` - 15 minutes before
+- `-P1D` - 1 day before
+
+## Timezone Support
+
+Specify timezones for events that span different time zones:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Conference Call',
+  start: new Date('2024-03-15T09:00:00'),
+  end: new Date('2024-03-15T10:00:00'),
+  startTzid: 'America/New_York',
+  endTzid: 'America/New_York'
+});
+```
+
+The implementation handles timezone parameters:
+
+```typescript client.ts
+if (event.startTzid) {
+  const prop = vevent.addPropertyWithValue("dtstart", start);
+  prop.setParameter("tzid", event.startTzid);
+} else {
+  e.startDate = start;
+}
+```
+
+See the [Timezone Support](/guides/timezone-support) guide for more details.
+
+## Recurrence
+
+Create recurring events using the `RecurrenceRule` type:
+
+```typescript models.ts
+export type RecurrenceRule = {
+  freq?: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+  interval?: number;
+  count?: number;
+  until?: Date;
+  wkst?: string;
+  byday?: string[];
+  bymonthday?: number[];
+  bymonth?: number[];
+};
+```
+
+### Weekly Recurring Event
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Weekly Team Meeting',
+  start: new Date('2024-03-11T10:00:00'),
+  end: new Date('2024-03-11T11:00:00'),
+  recurrenceRule: {
+    freq: 'WEEKLY',
+    byday: ['MO']  // Every Monday
+  }
+});
+```
+
+### Daily Standup (Weekdays Only)
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Daily Standup',
+  start: new Date('2024-03-11T09:00:00'),
+  end: new Date('2024-03-11T09:15:00'),
+  recurrenceRule: {
+    freq: 'DAILY',
+    byday: ['MO', 'TU', 'WE', 'TH', 'FR']
+  }
+});
+```
+
+### Monthly on Specific Day
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: 'Monthly Review',
+  start: new Date('2024-03-01T14:00:00'),
+  end: new Date('2024-03-01T15:00:00'),
+  recurrenceRule: {
+    freq: 'MONTHLY',
+    bymonthday: [1]  // 1st of each month
+  }
+});
+```
+
+See the [Recurrence Guide](/guides/recurrence) for advanced patterns.
+
+## Event Status
+
+Set event status to indicate its state:
+
+```typescript models.ts
+export const EVENT_STATUSES = ["TENTATIVE", "CONFIRMED", "CANCELLED"] as const;
+
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+```
+
+### Example Usage
+
+```typescript
+// Tentative event
+await client.createEvent(calendar.url, {
+  summary: 'Possible Lunch Meeting',
+  start: new Date('2024-03-15T12:00:00'),
+  end: new Date('2024-03-15T13:00:00'),
+  status: 'TENTATIVE'
+});
+
+// Confirm the event
+const events = await client.getEvents(calendar.url);
+const event = events.find(e => e.summary === 'Possible Lunch Meeting');
+
+if (event) {
+  event.status = 'CONFIRMED';
+  await client.updateEvent(calendar.url, event);
+}
+
+// Cancel the event
+event.status = 'CANCELLED';
+await client.updateEvent(calendar.url, event);
+```
+
+## Practical Examples
+
+### Create Event with All Features
+
+```typescript
+const result = await client.createEvent(calendar.url, {
+  summary: 'Quarterly Planning',
+  description: 'Q2 2024 planning session with leadership team',
+  location: 'Executive Board Room',
+  start: new Date('2024-04-01T09:00:00'),
+  end: new Date('2024-04-01T17:00:00'),
+  startTzid: 'America/New_York',
+  endTzid: 'America/New_York',
+  status: 'CONFIRMED',
+  alarms: [
+    {
+      action: 'EMAIL',
+      trigger: '-P1D',
+      summary: 'Planning Meeting Tomorrow',
+      description: 'Prepare materials for quarterly planning',
+      attendees: ['mailto:team@example.com']
+    },
+    {
+      action: 'DISPLAY',
+      trigger: '-PT30M',
+      description: 'Meeting in 30 minutes'
+    }
+  ]
+});
+```
+
+### Bulk Event Creation
+
+```typescript
+const eventData = [
+  { summary: 'Morning Standup', hour: 9 },
+  { summary: 'Lunch Break', hour: 12 },
+  { summary: 'Afternoon Review', hour: 16 }
+];
+
+for (const data of eventData) {
+  const start = new Date('2024-03-15T00:00:00');
+  start.setHours(data.hour);
+  
+  const end = new Date(start);
+  end.setMinutes(start.getMinutes() + 30);
+  
+  await client.createEvent(calendar.url, {
+    summary: data.summary,
+    start,
+    end
+  });
+}
+```
+
+### Find and Update Event
+
+```typescript
+const events = await client.getEvents(calendar.url);
+
+// Find event by summary
+const meeting = events.find(e => 
+  e.summary.includes('Team Meeting')
+);
+
+if (meeting) {
+  // Add 30 minutes
+  meeting.end = new Date(meeting.end.getTime() + 30 * 60 * 1000);
+  
+  // Add alarm
+  meeting.alarms = [
+    {
+      action: 'DISPLAY',
+      trigger: '-PT10M',
+      description: 'Meeting starts in 10 minutes'
+    }
+  ];
+  
+  await client.updateEvent(calendar.url, meeting);
+}
+```

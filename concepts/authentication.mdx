@@ -1,0 +1,211 @@
+---
+title: "Authentication"
+description: "Secure your CalDAV connection with Basic Auth or OAuth"
+icon: "lock"
+---
+
+ts-caldav supports two authentication methods: **Basic Authentication** and **OAuth 2.0**. Authentication is configured when creating the CalDAV client and is used for all subsequent requests.
+
+## Authentication Options
+
+The library defines authentication through the `AuthOptions` type, which supports both authentication methods:
+
+```typescript models.ts
+export type AuthOptions =
+  | { type: "basic"; username: string; password: string }
+  | { type: "oauth"; accessToken: string };
+```
+
+## Basic Authentication
+
+Basic Authentication uses a username and password combination. This is the most common method for CalDAV servers.
+
+### Configuration
+
+```typescript
+import { CalDAVClient } from 'ts-caldav';
+
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'basic',
+    username: 'your-username',
+    password: 'your-password'
+  }
+});
+```
+
+### How It Works
+
+The client automatically encodes your credentials using Base64 and includes them in the `Authorization` header:
+
+```typescript client.ts
+Authorization:
+  options.auth.type === "basic"
+    ? `Basic ${encode(`${options.auth.username}:${options.auth.password}`)}`
+    : `Bearer ${options.auth.accessToken}`
+```
+
+<Warning>
+  Basic Authentication transmits credentials with every request. Always use HTTPS (not HTTP) to ensure your credentials are encrypted in transit.
+</Warning>
+
+## OAuth 2.0 Authentication
+
+OAuth provides a more secure authentication method by using access tokens instead of passwords.
+
+### Configuration
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'oauth',
+    accessToken: 'your-access-token'
+  }
+});
+```
+
+### Token Management
+
+The library uses your access token as a Bearer token in the `Authorization` header. You are responsible for:
+
+- Obtaining the access token through your OAuth provider's flow
+- Refreshing the token when it expires
+- Creating a new client instance with the refreshed token
+
+<Info>
+  ts-caldav does not handle OAuth token refresh automatically. Implement token refresh logic in your application and create a new client when tokens are refreshed.
+</Info>
+
+## Discovery and Validation
+
+When you call `CalDAVClient.create()`, the client automatically validates your credentials through a discovery process:
+
+```typescript client.ts
+static async create(options: CalDAVOptions): Promise<CalDAVClient> {
+  const client = new CalDAVClient(options);
+  await client.discover();
+  return client;
+}
+```
+
+The discovery process:
+
+1. **Finds the CalDAV endpoint** by checking `.well-known/caldav` and common paths
+2. **Retrieves the user principal** from the server
+3. **Locates the calendar home** for the authenticated user
+4. **Validates access** to ensure credentials are valid
+
+```typescript client.ts
+const principalHref = this.getHrefFromProp(cup, "current-user-principal");
+if (!principalHref) {
+  throw new Error(
+    "User principal not found: credentials rejected or server misconfigured."
+  );
+}
+```
+
+<Tip>
+  If authentication fails during client creation, the error message will indicate whether it's a credential issue or server configuration problem.
+</Tip>
+
+## Security Best Practices
+
+### 1. Use Environment Variables
+
+Never hardcode credentials in your source code:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: process.env.CALDAV_URL,
+  auth: {
+    type: 'basic',
+    username: process.env.CALDAV_USERNAME,
+    password: process.env.CALDAV_PASSWORD
+  }
+});
+```
+
+### 2. Always Use HTTPS
+
+Ensure your `baseUrl` uses the `https://` protocol:
+
+```typescript
+// Good
+baseUrl: 'https://caldav.example.com'
+
+// Bad - credentials will be sent unencrypted
+baseUrl: 'http://caldav.example.com'
+```
+
+### 3. Limit Token Scope
+
+When using OAuth, request only the minimum scopes needed for your application.
+
+### 4. Implement Token Rotation
+
+For OAuth implementations, regularly rotate access tokens:
+
+```typescript
+// When token expires, create a new client
+const newToken = await refreshAccessToken(oldToken);
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: {
+    type: 'oauth',
+    accessToken: newToken
+  }
+});
+```
+
+## Additional Configuration
+
+You can customize the client with additional options:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: { type: 'basic', username: 'user', password: 'pass' },
+  
+  // Custom request timeout (default: 5000ms)
+  requestTimeout: 10000,
+  
+  // Enable request logging for debugging
+  logRequests: true,
+  
+  // Custom product identifier
+  prodId: '-//MyApp//CalDAV Client//EN',
+  
+  // Additional HTTP headers
+  headers: {
+    'User-Agent': 'MyApp/1.0'
+  }
+});
+```
+
+## Troubleshooting
+
+### Authentication Fails with "User principal not found"
+
+This typically means:
+- Your credentials are incorrect
+- The server is not properly configured for CalDAV
+- The base URL is incorrect
+
+Enable request logging to debug:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.example.com',
+  auth: { type: 'basic', username: 'user', password: 'pass' },
+  logRequests: true  // See all requests in console
+});
+```
+
+### "Calendar home not found"
+
+The discovery process completed but couldn't find your calendar collection. Check that:
+- Your account has permission to access calendars
+- The server supports CalDAV (not just CardDAV)
+- The base URL points to the correct server

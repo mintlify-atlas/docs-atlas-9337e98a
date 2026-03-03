@@ -1,0 +1,513 @@
+---
+title: "Todos"
+description: "Manage todo items and task lists in CalDAV"
+icon: "list-check"
+---
+
+Todos (also called tasks) are action items stored in CalDAV calendars. They support due dates, completion tracking, and priorities through custom properties.
+
+## Todo Type
+
+The `Todo` interface represents a todo item:
+
+```typescript models.ts
+export interface Todo {
+  uid: string;
+  summary: string;
+  start?: Date;
+  due?: Date;
+  completed?: Date;
+  status?: TodoStatus;
+  description?: string;
+  location?: string;
+  etag: string;
+  href: string;
+  alarms?: Alarm[];
+  sortOrder?: number;
+}
+```
+
+### Properties
+
+<ParamField path="uid" type="string" required>
+  Unique identifier for the todo. Auto-generated if not provided.
+</ParamField>
+
+<ParamField path="summary" type="string" required>
+  The todo title or task name (e.g., "Review pull request", "Buy groceries").
+</ParamField>
+
+<ParamField path="start" type="Date">
+  When the todo becomes active or should be started.
+</ParamField>
+
+<ParamField path="due" type="Date">
+  When the todo should be completed by.
+</ParamField>
+
+<ParamField path="completed" type="Date">
+  When the todo was actually completed. Set this when marking a todo as done.
+</ParamField>
+
+<ParamField path="status" type="TodoStatus">
+  Current status: `"NEEDS-ACTION"`, `"COMPLETED"`, `"IN-PROCESS"`, or `"CANCELLED"`.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Detailed notes or instructions for the todo.
+</ParamField>
+
+<ParamField path="location" type="string">
+  Where the task should be performed.
+</ParamField>
+
+<ParamField path="etag" type="string" required>
+  Entity tag for concurrency control.
+</ParamField>
+
+<ParamField path="href" type="string" required>
+  The CalDAV URL for this todo.
+</ParamField>
+
+<ParamField path="alarms" type="Alarm[]">
+  Reminders for this todo.
+</ParamField>
+
+<ParamField path="sortOrder" type="number">
+  Custom sort order (Apple extension). Lower numbers appear first.
+</ParamField>
+
+## Todo Status
+
+Todos can have one of four status values:
+
+```typescript models.ts
+export const TODO_STATUSES = [
+  "NEEDS-ACTION",
+  "COMPLETED",
+  "IN-PROCESS",
+  "CANCELLED",
+] as const;
+
+export type TodoStatus = (typeof TODO_STATUSES)[number];
+```
+
+- `NEEDS-ACTION` - Todo is pending and hasn't been started
+- `IN-PROCESS` - Todo is currently being worked on
+- `COMPLETED` - Todo has been finished
+- `CANCELLED` - Todo was cancelled and won't be completed
+
+## Creating Todos
+
+### Basic Todo
+
+```typescript
+const calendars = await client.getCalendars();
+const calendar = calendars.find(cal => 
+  cal.supportedComponents.includes('VTODO')
+);
+
+if (calendar) {
+  const result = await client.createTodo(calendar.url, {
+    summary: 'Review documentation updates',
+    status: 'NEEDS-ACTION'
+  });
+  
+  console.log(`Created todo: ${result.uid}`);
+}
+```
+
+The method signature:
+
+```typescript client.ts
+public async createTodo(
+  calendarUrl: string,
+  todoData: PartialBy<Todo, "uid" | "href" | "etag">,
+): Promise<{ uid: string; href: string; etag: string; newCtag: string }>
+```
+
+### Todo with Due Date
+
+```typescript
+await client.createTodo(calendar.url, {
+  summary: 'Submit expense report',
+  due: new Date('2024-03-31T17:00:00'),
+  status: 'NEEDS-ACTION',
+  description: 'March expenses for travel and equipment'
+});
+```
+
+### Todo with Start and Due Dates
+
+```typescript
+await client.createTodo(calendar.url, {
+  summary: 'Prepare quarterly presentation',
+  start: new Date('2024-03-15T09:00:00'),
+  due: new Date('2024-03-29T17:00:00'),
+  status: 'NEEDS-ACTION',
+  description: 'Q1 results and Q2 planning',
+  location: 'Office'
+});
+```
+
+## Fetching Todos
+
+### Get All Todos
+
+By default, fetches all todos (unlike events which have a date range):
+
+```typescript
+const todos = await client.getTodos(calendar.url);
+
+todos.forEach(todo => {
+  console.log(`${todo.summary}`);
+  if (todo.due) {
+    console.log(`  Due: ${todo.due}`);
+  }
+  console.log(`  Status: ${todo.status}`);
+});
+```
+
+The method signature:
+
+```typescript client.ts
+public async getTodos(
+  calendarUrl: string,
+  options?: { start?: Date; end?: Date; all?: boolean },
+): Promise<Todo[]>
+```
+
+<Info>
+  The `getTodos()` method defaults to `all: true` because todos don't always have specific date ranges.
+</Info>
+
+### Filter Todos by Date Range
+
+```typescript
+const start = new Date('2024-03-01T00:00:00');
+const end = new Date('2024-03-31T23:59:59');
+
+const marchTodos = await client.getTodos(calendar.url, {
+  start,
+  end
+});
+
+console.log(`Todos in March: ${marchTodos.length}`);
+```
+
+## Updating Todos
+
+### Mark as Completed
+
+```typescript
+const todos = await client.getTodos(calendar.url);
+const todo = todos.find(t => t.summary === 'Review documentation updates');
+
+if (todo) {
+  todo.status = 'COMPLETED';
+  todo.completed = new Date();
+  
+  const result = await client.updateTodo(calendar.url, todo);
+  console.log('Todo marked as completed');
+}
+```
+
+### Mark as In Progress
+
+```typescript
+const todo = todos.find(t => t.summary === 'Prepare quarterly presentation');
+
+if (todo) {
+  todo.status = 'IN-PROCESS';
+  await client.updateTodo(calendar.url, todo);
+}
+```
+
+### Update Due Date
+
+```typescript
+if (todo) {
+  // Extend deadline by one week
+  if (todo.due) {
+    const newDue = new Date(todo.due);
+    newDue.setDate(newDue.getDate() + 7);
+    todo.due = newDue;
+    
+    await client.updateTodo(calendar.url, todo);
+  }
+}
+```
+
+The method signature:
+
+```typescript client.ts
+public async updateTodo(
+  calendarUrl: string,
+  todo: Todo,
+): Promise<{ uid: string; href: string; etag: string; newCtag: string }>
+```
+
+## Deleting Todos
+
+Delete a todo by its UID:
+
+```typescript
+const todos = await client.getTodos(calendar.url);
+const todo = todos[0];
+
+await client.deleteTodo(calendar.url, todo.uid, todo.etag);
+console.log('Todo deleted');
+```
+
+The method signature:
+
+```typescript client.ts
+public async deleteTodo(
+  calendarUrl: string,
+  todoUid: string,
+  etag?: string,
+): Promise<void>
+```
+
+## Todo Alarms
+
+Todos support the same alarm types as events:
+
+```typescript
+await client.createTodo(calendar.url, {
+  summary: 'File tax return',
+  due: new Date('2024-04-15T23:59:59'),
+  status: 'NEEDS-ACTION',
+  alarms: [
+    {
+      action: 'DISPLAY',
+      trigger: '-P7D',  // 1 week before
+      description: 'Tax deadline in one week'
+    },
+    {
+      action: 'DISPLAY',
+      trigger: '-P1D',  // 1 day before
+      description: 'Tax deadline tomorrow!'
+    },
+    {
+      action: 'EMAIL',
+      trigger: '-P3D',  // 3 days before
+      summary: 'Tax Deadline Approaching',
+      description: 'Don\'t forget to file taxes',
+      attendees: ['mailto:me@example.com']
+    }
+  ]
+});
+```
+
+## Sort Order
+
+The `sortOrder` property is an Apple extension for custom ordering:
+
+```typescript
+// Create todos with specific order
+await client.createTodo(calendar.url, {
+  summary: 'High priority task',
+  sortOrder: 1
+});
+
+await client.createTodo(calendar.url, {
+  summary: 'Medium priority task',
+  sortOrder: 2
+});
+
+await client.createTodo(calendar.url, {
+  summary: 'Low priority task',
+  sortOrder: 3
+});
+
+// Fetch and sort
+const todos = await client.getTodos(calendar.url);
+const sorted = todos
+  .filter(t => t.sortOrder !== undefined)
+  .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+```
+
+<Info>
+  The `sortOrder` property uses the `X-APPLE-SORT-ORDER` extension. Not all CalDAV servers support this.
+</Info>
+
+## Todo Building Implementation
+
+The library builds todos using the iCalendar VTODO component:
+
+```typescript client.ts
+private buildTodoICSData(
+  todo: PartialBy<Todo, "uid" | "etag" | "href">,
+  uid: string,
+): string {
+  const vcalendar = new ICAL.Component(["vcalendar", [], []]);
+  vcalendar.addPropertyWithValue("version", "2.0");
+  vcalendar.addPropertyWithValue("prodid", this.prodId);
+
+  const vtodo = new ICAL.Component("vtodo");
+  vtodo.addPropertyWithValue("uid", uid);
+  vtodo.addPropertyWithValue(
+    "dtstamp",
+    ICAL.Time.fromJSDate(new Date(), true),
+  );
+
+  if (todo.start)
+    vtodo.addPropertyWithValue(
+      "dtstart",
+      ICAL.Time.fromJSDate(todo.start, true),
+    );
+  if (todo.due)
+    vtodo.addPropertyWithValue("due", ICAL.Time.fromJSDate(todo.due, true));
+  if (todo.completed)
+    vtodo.addPropertyWithValue(
+      "completed",
+      ICAL.Time.fromJSDate(todo.completed, true),
+    );
+  vtodo.addPropertyWithValue("summary", todo.summary);
+  if (todo.description)
+    vtodo.addPropertyWithValue("description", todo.description);
+  if (todo.location) vtodo.addPropertyWithValue("location", todo.location);
+  if (todo.status) vtodo.addPropertyWithValue("status", todo.status);
+  if (todo.sortOrder !== undefined)
+    vtodo.addPropertyWithValue("X-APPLE-SORT-ORDER", todo.sortOrder);
+
+  // ... alarm handling ...
+
+  vcalendar.addSubcomponent(vtodo);
+  return vcalendar.toString();
+}
+```
+
+## Practical Examples
+
+### Create a Task List
+
+```typescript
+const tasks = [
+  { summary: 'Design mockups', due: '2024-03-20' },
+  { summary: 'Implement API', due: '2024-03-25' },
+  { summary: 'Write tests', due: '2024-03-28' },
+  { summary: 'Deploy to staging', due: '2024-03-30' }
+];
+
+for (const [index, task] of tasks.entries()) {
+  await client.createTodo(calendar.url, {
+    summary: task.summary,
+    due: new Date(task.due + 'T17:00:00'),
+    status: 'NEEDS-ACTION',
+    sortOrder: index + 1
+  });
+}
+```
+
+### Filter by Status
+
+```typescript
+const todos = await client.getTodos(calendar.url);
+
+const active = todos.filter(t => 
+  t.status === 'NEEDS-ACTION' || t.status === 'IN-PROCESS'
+);
+
+const completed = todos.filter(t => 
+  t.status === 'COMPLETED'
+);
+
+console.log(`Active tasks: ${active.length}`);
+console.log(`Completed tasks: ${completed.length}`);
+```
+
+### Find Overdue Todos
+
+```typescript
+const todos = await client.getTodos(calendar.url);
+const now = new Date();
+
+const overdue = todos.filter(t => {
+  if (!t.due || t.status === 'COMPLETED') return false;
+  return t.due < now;
+});
+
+if (overdue.length > 0) {
+  console.log(`You have ${overdue.length} overdue tasks:`);
+  overdue.forEach(t => {
+    console.log(`- ${t.summary} (due ${t.due})`);
+  });
+}
+```
+
+### Auto-complete Todo
+
+```typescript
+async function completeTodo(todoUid: string) {
+  const todos = await client.getTodos(calendar.url);
+  const todo = todos.find(t => t.uid === todoUid);
+  
+  if (!todo) {
+    throw new Error('Todo not found');
+  }
+  
+  if (todo.status === 'COMPLETED') {
+    console.log('Todo already completed');
+    return;
+  }
+  
+  todo.status = 'COMPLETED';
+  todo.completed = new Date();
+  
+  await client.updateTodo(calendar.url, todo);
+  console.log(`Completed: ${todo.summary}`);
+}
+```
+
+### Group by Due Date
+
+```typescript
+const todos = await client.getTodos(calendar.url);
+const now = new Date();
+const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+const tomorrow = new Date(today);
+tomorrow.setDate(tomorrow.getDate() + 1);
+const nextWeek = new Date(today);
+nextWeek.setDate(nextWeek.getDate() + 7);
+
+const grouped = {
+  overdue: todos.filter(t => t.due && t.due < today && t.status !== 'COMPLETED'),
+  today: todos.filter(t => t.due && t.due >= today && t.due < tomorrow),
+  tomorrow: todos.filter(t => t.due && t.due >= tomorrow && t.due < new Date(tomorrow.getTime() + 86400000)),
+  thisWeek: todos.filter(t => t.due && t.due >= today && t.due < nextWeek),
+  later: todos.filter(t => t.due && t.due >= nextWeek),
+  noDueDate: todos.filter(t => !t.due && t.status !== 'COMPLETED')
+};
+
+console.log(`Overdue: ${grouped.overdue.length}`);
+console.log(`Today: ${grouped.today.length}`);
+console.log(`Tomorrow: ${grouped.tomorrow.length}`);
+console.log(`This week: ${grouped.thisWeek.length}`);
+console.log(`Later: ${grouped.later.length}`);
+console.log(`No due date: ${grouped.noDueDate.length}`);
+```
+
+## Todo vs Event
+
+When to use todos vs events:
+
+| Use Todo When | Use Event When |
+|--------------|----------------|
+| Task doesn't have a specific time | Activity has a specific time slot |
+| Completion tracking is important | Time blocking is important |
+| Due date matters more than duration | Start and end times matter |
+| Item appears on a task list | Item appears on a calendar grid |
+
+**Todos are best for:**
+- Action items and tasks
+- Checklists and to-do lists
+- Project deliverables
+- Items without specific times
+
+**Events are best for:**
+- Meetings and appointments
+- Time-blocked work sessions
+- Scheduled activities
+- Calendar entries with specific durations

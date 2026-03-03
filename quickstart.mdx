@@ -1,80 +1,334 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with ts-caldav in minutes with this hands-on tutorial
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+This guide will walk you through creating your first CalDAV integration using ts-caldav. In just a few minutes, you'll authenticate with a CalDAV server, fetch calendars, and create your first event.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+Before you begin, make sure you have:
 
-### Step 2: Deploy your changes
+- Node.js 14 or higher installed
+- A CalDAV account (Google Calendar, iCloud, Fastmail, etc.)
+- Your CalDAV credentials ready (username and password or app-specific password)
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Warning>
+Many providers like iCloud, Google, and Fastmail require app-specific passwords for CalDAV access. Don't use your main account password - generate an app-specific password from your provider's security settings.
+</Warning>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Installation
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+First, install ts-caldav in your project:
 
-### Step 3: Go live
+<CodeGroup>
+```bash npm
+npm install ts-caldav
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```bash yarn
+yarn add ts-caldav
+```
 
-## Next steps
+```bash pnpm
+pnpm add ts-caldav
+```
+</CodeGroup>
 
-Now that you have your docs running, explore these key features:
+## Step-by-Step Tutorial
+
+<Steps>
+  <Step title="Import and Initialize the Client">
+    Create a new TypeScript file and import the CalDAV client:
+
+    ```typescript
+    import { CalDAVClient } from "ts-caldav";
+
+    async function main() {
+      // We'll add code here in the next steps
+    }
+
+    main().catch(console.error);
+    ```
+
+    <Info>
+    ts-caldav uses modern async/await patterns throughout. All API calls return Promises.
+    </Info>
+  </Step>
+
+  <Step title="Authenticate with Your CalDAV Server">
+    Create a client instance with your credentials. The `create()` method automatically discovers the CalDAV endpoint and validates your credentials:
+
+    ```typescript
+    const client = await CalDAVClient.create({
+      baseUrl: "https://caldav.icloud.com",
+      auth: {
+        type: "basic",
+        username: "your-username@icloud.com",
+        password: "your-app-specific-password",
+      },
+    });
+
+    console.log("Successfully authenticated!");
+    ```
+
+    <Tip>
+    For debugging, you can enable request logging by adding `logRequests: true` to the options. This will print all HTTP requests to the console.
+    </Tip>
+
+    **Common Base URLs:**
+    - iCloud: `https://caldav.icloud.com`
+    - Google: `https://apidata.googleusercontent.com`
+    - Fastmail: `https://caldav.fastmail.com`
+    - Yahoo: `https://caldav.calendar.yahoo.com`
+  </Step>
+
+  <Step title="Fetch Your Calendars">
+    Now retrieve all calendars accessible to your account:
+
+    ```typescript
+    const calendars = await client.getCalendars();
+
+    console.log(`Found ${calendars.length} calendars:\n`);
+    calendars.forEach(cal => {
+      console.log(`📅 ${cal.displayName}`);
+      console.log(`   URL: ${cal.url}`);
+      console.log(`   Components: ${cal.supportedComponents.join(", ")}`);
+      if (cal.color) {
+        console.log(`   Color: ${cal.color}`);
+      }
+      console.log();
+    });
+    ```
+
+    The `Calendar` object includes:
+    - `displayName` - The calendar's human-readable name
+    - `url` - The CalDAV URL for this calendar (used in subsequent requests)
+    - `supportedComponents` - Array of supported component types (VEVENT, VTODO, etc.)
+    - `color` - Calendar color if provided by the server
+    - `ctag` - Change tag for sync operations
+  </Step>
+
+  <Step title="Get Events from a Calendar">
+    Fetch events from a specific calendar. You can specify a date range or fetch all events:
+
+    ```typescript
+    // Use the first calendar
+    const calendar = calendars[0];
+
+    // Fetch events for the next 7 days
+    const events = await client.getEvents(calendar.url, {
+      start: new Date(),
+      end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    console.log(`\nUpcoming events in "${calendar.displayName}":\n`);
+    events.forEach(event => {
+      console.log(`📌 ${event.summary}`);
+      console.log(`   Start: ${event.start.toLocaleString()}`);
+      console.log(`   End: ${event.end.toLocaleString()}`);
+      if (event.location) {
+        console.log(`   Location: ${event.location}`);
+      }
+      if (event.description) {
+        console.log(`   Description: ${event.description}`);
+      }
+      console.log();
+    });
+    ```
+
+    <Info>
+    By default, `getEvents()` fetches events from now until 3 weeks ahead. Use the `all: true` option to fetch all events regardless of date range.
+    </Info>
+  </Step>
+
+  <Step title="Create a New Event">
+    Create a new event in your calendar:
+
+    ```typescript
+    const result = await client.createEvent(calendar.url, {
+      summary: "Team Standup",
+      start: new Date("2026-03-10T09:00:00"),
+      end: new Date("2026-03-10T09:30:00"),
+      description: "Daily team sync meeting",
+      location: "Conference Room A",
+      status: "CONFIRMED",
+    });
+
+    console.log(`\n✅ Event created successfully!`);
+    console.log(`   UID: ${result.uid}`);
+    console.log(`   ETag: ${result.etag}`);
+    console.log(`   Calendar CTag: ${result.newCtag}`);
+    ```
+
+    The `createEvent()` method returns:
+    - `uid` - Unique identifier for the event
+    - `href` - CalDAV URL for this specific event
+    - `etag` - Entity tag for concurrency control
+    - `newCtag` - Updated calendar change tag
+
+    <Tip>
+    Store the `uid` and `etag` values if you need to update or delete the event later.
+    </Tip>
+  </Step>
+
+  <Step title="Create a Recurring Event (Optional)">
+    ts-caldav supports complex recurring events:
+
+    ```typescript
+    const recurringEvent = await client.createEvent(calendar.url, {
+      summary: "Weekly Team Meeting",
+      start: new Date("2026-03-10T14:00:00"),
+      end: new Date("2026-03-10T15:00:00"),
+      description: "Weekly team sync",
+      recurrenceRule: {
+        freq: "WEEKLY",
+        interval: 1,
+        byday: ["TU"], // Every Tuesday
+        until: new Date("2026-12-31"),
+      },
+      alarms: [
+        {
+          action: "DISPLAY",
+          trigger: "-PT15M", // 15 minutes before
+          description: "Meeting starting soon",
+        },
+      ],
+    });
+
+    console.log(`\n✅ Recurring event created!`);
+    ```
+
+    Recurrence rules support:
+    - `freq` - DAILY, WEEKLY, MONTHLY, or YEARLY
+    - `interval` - Repeat every N periods
+    - `count` - Number of occurrences
+    - `until` - End date
+    - `byday` - Days of week (MO, TU, WE, TH, FR, SA, SU)
+    - `bymonthday` - Days of month
+    - `bymonth` - Months of year
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's the complete working example combining all the steps:
+
+```typescript
+import { CalDAVClient } from "ts-caldav";
+
+async function main() {
+  // 1. Create and authenticate client
+  const client = await CalDAVClient.create({
+    baseUrl: "https://caldav.icloud.com",
+    auth: {
+      type: "basic",
+      username: "your-username@icloud.com",
+      password: "your-app-specific-password",
+    },
+    logRequests: false, // Set to true for debugging
+  });
+
+  console.log("✅ Successfully authenticated!\n");
+
+  // 2. Fetch calendars
+  const calendars = await client.getCalendars();
+  console.log(`Found ${calendars.length} calendars\n`);
+
+  // Use the first calendar
+  const calendar = calendars[0];
+  console.log(`Using calendar: ${calendar.displayName}\n`);
+
+  // 3. Get upcoming events
+  const events = await client.getEvents(calendar.url, {
+    start: new Date(),
+    end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  });
+
+  console.log(`Upcoming events (next 7 days): ${events.length}\n`);
+  events.forEach(event => {
+    console.log(`  📌 ${event.summary} - ${event.start.toLocaleDateString()}`);
+  });
+
+  // 4. Create a new event
+  const newEvent = await client.createEvent(calendar.url, {
+    summary: "Meeting with ts-caldav",
+    start: new Date("2026-03-15T10:00:00"),
+    end: new Date("2026-03-15T11:00:00"),
+    description: "Testing ts-caldav integration",
+    status: "CONFIRMED",
+  });
+
+  console.log(`\n✅ Created event: ${newEvent.uid}`);
+}
+
+main().catch(console.error);
+```
+
+## Next Steps
+
+Now that you've completed the quickstart, explore more advanced features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="Synchronization"
+    icon="arrows-rotate"
+    href="/concepts/synchronization"
+  >
+    Learn how to efficiently sync calendar changes
+  </Card>
+  <Card
+    title="Event Operations"
+    icon="pen-to-square"
+    href="/api/event-operations"
+  >
+    Modify and remove existing events
+  </Card>
+  <Card
+    title="Timezone Support"
+    icon="earth-americas"
+    href="/guides/timezone-support"
+  >
+    Handle events across multiple timezones
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/api/caldav-client"
+  >
+    Explore the complete API documentation
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Authentication Failed">
+    If you're getting authentication errors:
+    
+    1. Verify you're using an app-specific password (not your main account password)
+    2. Check that the `baseUrl` is correct for your provider
+    3. Enable `logRequests: true` to see the actual HTTP requests
+    4. Ensure CalDAV is enabled for your account (check provider settings)
+  </Accordion>
+
+  <Accordion title="Calendar Home Not Found">
+    If discovery fails:
+    
+    1. Some servers require the full path to the CalDAV endpoint
+    2. Try different discovery roots (/, /dav, /caldav, etc.)
+    3. Check your provider's documentation for the correct endpoint URL
+    4. Use `logRequests: true` to debug the discovery process
+  </Accordion>
+
+  <Accordion title="No Events Returned">
+    If `getEvents()` returns an empty array:
+    
+    1. Check that the calendar actually has events in the specified date range
+    2. Try using `all: true` to fetch all events
+    3. Verify the calendar URL is correct
+    4. Some calendars may only support specific component types (check `supportedComponents`)
+  </Accordion>
+</AccordionGroup>

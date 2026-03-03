@@ -1,0 +1,210 @@
+---
+title: Timezone Support
+description: Working with timezones in ts-caldav events
+---
+
+## Overview
+
+ts-caldav provides robust timezone support for calendar events through the `startTzid` and `endTzid` properties. This allows you to create timezone-aware events and properly handle time conversions across different regions.
+
+## Timezone Properties
+
+The `Event` interface includes two optional timezone properties:
+
+```typescript
+interface Event {
+  start: Date;
+  end: Date;
+  startTzid?: string;  // IANA timezone identifier for start time
+  endTzid?: string;    // IANA timezone identifier for end time
+  // ... other properties
+}
+```
+
+Both properties accept IANA timezone identifiers (e.g., `"Europe/Berlin"`, `"America/New_York"`, `"Asia/Tokyo"`).
+
+## Creating Timezone-Aware Events
+
+### Same Timezone for Start and End
+
+Most events occur in a single timezone:
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "user",
+    password: "password"
+  }
+});
+
+const calendars = await client.getCalendars();
+
+await client.createEvent(calendars[0].url, {
+  summary: "Team Sync",
+  start: new Date("2025-07-01T09:00:00"),
+  end: new Date("2025-07-01T10:00:00"),
+  startTzid: "Europe/Berlin",
+  endTzid: "Europe/Berlin",
+  status: "CONFIRMED"
+});
+```
+
+### Different Timezones for Start and End
+
+For events spanning multiple timezones (like flights), you can specify different timezones:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Flight to SF",
+  start: new Date("2025-07-01T15:00:00"),
+  end: new Date("2025-07-01T18:00:00"),
+  startTzid: "Europe/Berlin",      // Departure timezone
+  endTzid: "America/Los_Angeles",   // Arrival timezone
+  description: "LH456 to San Francisco"
+});
+```
+
+<Note>
+When creating events with different start and end timezones, make sure the Date objects represent the correct local times for each timezone.
+</Note>
+
+## UTC Handling
+
+If you omit the `startTzid` and `endTzid` properties, events are stored in UTC:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "UTC Event",
+  start: new Date("2025-07-01T14:00:00Z"),
+  end: new Date("2025-07-01T15:00:00Z")
+  // No timezone properties - stored as UTC
+});
+```
+
+The times are stored in UTC format in the iCalendar file:
+
+```ics
+BEGIN:VEVENT
+DTSTART:20250701T140000Z
+DTEND:20250701T150000Z
+SUMMARY:UTC Event
+END:VEVENT
+```
+
+## Retrieving Timezone Information
+
+When fetching events, ts-caldav automatically parses timezone information:
+
+```typescript
+const events = await client.getEvents(calendar.url, {
+  start: new Date(),
+  end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+});
+
+events.forEach(event => {
+  console.log(`Event: ${event.summary}`);
+  console.log(`Start: ${event.start}`);
+  console.log(`Start Timezone: ${event.startTzid || 'UTC'}`);
+  console.log(`End Timezone: ${event.endTzid || 'UTC'}`);
+});
+```
+
+### Timezone Parameter Parsing
+
+The library extracts timezone identifiers from the TZID parameter in iCalendar data:
+
+```typescript src/utils/parser.ts
+const dtStartProp = vevent.getFirstProperty("dtstart");
+const dtEndProp = vevent.getFirstProperty("dtend");
+
+const startTzid = normalizeParam(dtStartProp?.getParameter("tzid"));
+const endTzid = normalizeParam(dtEndProp?.getParameter("tzid"));
+```
+
+This ensures that timezone information is preserved when reading events from the CalDAV server.
+
+## How Timezones are Stored
+
+When you create an event with timezone information, ts-caldav sets the TZID parameter on the DTSTART and DTEND properties:
+
+```typescript src/client.ts
+if (event.startTzid) {
+  const prop = vevent.addPropertyWithValue("dtstart", start);
+  prop.setParameter("tzid", event.startTzid);
+} else {
+  e.startDate = start;
+}
+
+if (event.endTzid) {
+  const prop = vevent.addPropertyWithValue("dtend", end);
+  prop.setParameter("tzid", event.endTzid);
+} else {
+  e.endDate = end;
+}
+```
+
+This produces iCalendar data like:
+
+```ics
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20250701T090000
+DTEND;TZID=Europe/Berlin:20250701T100000
+SUMMARY:Team Sync
+END:VEVENT
+```
+
+## VTIMEZONE Components
+
+<Warning>
+ts-caldav uses simple TZID references and does not automatically include full VTIMEZONE definitions in the generated iCalendar data. Most modern CalDAV servers can resolve these timezone identifiers.
+</Warning>
+
+If your CalDAV server requires full VTIMEZONE components, you'll need to include them manually in the raw iCalendar data.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use IANA Identifiers" icon="globe">
+    Always use standard IANA timezone identifiers like `"America/New_York"` instead of abbreviations like `"EST"`.
+  </Card>
+  
+  <Card title="Consistent Timezones" icon="clock">
+    For most events, use the same timezone for both start and end times.
+  </Card>
+  
+  <Card title="UTC for Simple Cases" icon="earth-americas">
+    For events that don't need timezone awareness, omit the timezone properties and use UTC dates.
+  </Card>
+  
+  <Card title="Whole Day Events" icon="calendar-day">
+    Whole day events don't use timezones. Set `wholeDay: true` instead.
+  </Card>
+</CardGroup>
+
+## Working with Whole Day Events
+
+For all-day events, timezones are not relevant. Use the `wholeDay` property instead:
+
+```typescript
+await client.createEvent(calendar.url, {
+  summary: "Conference",
+  start: new Date("2025-07-15T00:00:00"),
+  end: new Date("2025-07-17T00:00:00"),
+  wholeDay: true
+  // No timezone properties needed
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Recurrence" icon="repeat" href="/guides/recurrence">
+    Learn how to create recurring events with timezone support
+  </Card>
+  
+  <Card title="Event API Reference" icon="code" href="/api/event-operations">
+    Explore all event properties and methods
+  </Card>
+</CardGroup>

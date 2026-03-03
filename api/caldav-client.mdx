@@ -1,0 +1,246 @@
+---
+title: 'CalDAVClient'
+description: 'Core client class for ts-caldav CalDAV operations'
+---
+
+## Overview
+
+The `CalDAVClient` class is the main entry point for interacting with CalDAV servers. It handles authentication, server discovery, and provides methods for calendar operations.
+
+## Creating a Client
+
+### CalDAVClient.create()
+
+Creates a new CalDAVClient instance and validates the provided credentials.
+
+<ParamField path="options" type="CalDAVOptions" required>
+  Configuration options for the CalDAV client
+  
+  <Accordion title="CalDAVOptions Properties">
+    <ParamField path="baseUrl" type="string" required>
+      The base URL of the CalDAV server (e.g., `https://caldav.example.com`)
+    </ParamField>
+    
+    <ParamField path="auth" type="AuthOptions" required>
+      Authentication configuration. Can be either basic auth or OAuth.
+      
+      **Basic Authentication:**
+      ```typescript
+      {
+        type: "basic",
+        username: string,
+        password: string
+      }
+      ```
+      
+      **OAuth Authentication:**
+      ```typescript
+      {
+        type: "oauth",
+        accessToken: string
+      }
+      ```
+    </ParamField>
+    
+    <ParamField path="requestTimeout" type="number">
+      Request timeout in milliseconds. Defaults to `5000` (5 seconds).
+    </ParamField>
+    
+    <ParamField path="logRequests" type="boolean">
+      Enable request logging to console. Defaults to `false`.
+    </ParamField>
+    
+    <ParamField path="prodId" type="string">
+      Product identifier for iCalendar data. Defaults to `"-//ts-caldav.//CalDAV Client//EN"`.
+    </ParamField>
+    
+    <ParamField path="headers" type="AxiosHeaders">
+      Additional HTTP headers to include in requests.
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="Promise<CalDAVClient>" type="CalDAVClient">
+  A promise that resolves to a new CalDAVClient instance
+</ResponseField>
+
+**Throws:** An error if the provided credentials are invalid or server discovery fails.
+
+```typescript
+const client = await CalDAVClient.create({
+  baseUrl: "https://caldav.example.com",
+  auth: {
+    type: "basic",
+    username: "user@example.com",
+    password: "your-password"
+  },
+  requestTimeout: 10000,
+  logRequests: true
+});
+```
+
+### CalDAVClient.createFromCache()
+
+Creates a CalDAVClient instance from a cache object. This is useful for restoring a client state without re-fetching the calendar home.
+
+<ParamField path="options" type="CalDAVOptions" required>
+  The same CalDAV client options as `create()`
+</ParamField>
+
+<ParamField path="cache" type="CalDAVClientCache" required>
+  The cached client state
+  
+  <Accordion title="CalDAVClientCache Properties">
+    <ParamField path="userPrincipal" type="string" required>
+      The user principal URL from a previous session
+    </ParamField>
+    
+    <ParamField path="calendarHome" type="string" required>
+      The calendar home URL from a previous session
+    </ParamField>
+    
+    <ParamField path="prodId" type="string">
+      The product identifier from a previous session
+    </ParamField>
+  </Accordion>
+</ParamField>
+
+<ResponseField name="CalDAVClient" type="CalDAVClient">
+  A new CalDAVClient instance initialized with the cached state
+</ResponseField>
+
+**Throws:** An error if the cache is invalid or incomplete.
+
+```typescript
+// Save cache from an existing client
+const cache = client.exportCache();
+
+// Later, restore from cache
+const restoredClient = CalDAVClient.createFromCache(
+  {
+    baseUrl: "https://caldav.example.com",
+    auth: {
+      type: "basic",
+      username: "user@example.com",
+      password: "your-password"
+    }
+  },
+  cache
+);
+```
+
+## Instance Methods
+
+### exportCache()
+
+Exports the current client state to a cache object. This can be used to restore the client state later without re-fetching the calendar home.
+
+<ResponseField name="CalDAVClientCache" type="CalDAVClientCache">
+  A cache object containing the current client state (userPrincipal, calendarHome, prodId)
+</ResponseField>
+
+```typescript
+const cache = client.exportCache();
+// Store cache in localStorage, database, etc.
+localStorage.setItem('caldav-cache', JSON.stringify(cache));
+```
+
+### getCalendarHome()
+
+Returns the calendar home URL for the authenticated user.
+
+<ResponseField name="string | null" type="string | null">
+  The calendar home URL, or null if not yet discovered
+</ResponseField>
+
+```typescript
+const calendarHome = client.getCalendarHome();
+console.log('Calendar Home:', calendarHome);
+```
+
+## Instance Properties
+
+<ResponseField name="baseUrl" type="string">
+  The base URL of the CalDAV server
+</ResponseField>
+
+<ResponseField name="calendarHome" type="string | null">
+  The discovered calendar home URL
+</ResponseField>
+
+<ResponseField name="userPrincipal" type="string | null">
+  The discovered user principal URL
+</ResponseField>
+
+<ResponseField name="requestTimeout" type="number">
+  The request timeout in milliseconds
+</ResponseField>
+
+## Example: Complete Setup
+
+```typescript
+import { CalDAVClient } from 'ts-caldav';
+
+// Create client with basic auth
+const client = await CalDAVClient.create({
+  baseUrl: 'https://caldav.icloud.com',
+  auth: {
+    type: 'basic',
+    username: 'your-apple-id@icloud.com',
+    password: 'app-specific-password'
+  },
+  requestTimeout: 15000,
+  logRequests: process.env.NODE_ENV === 'development'
+});
+
+// Export and save cache for future use
+const cache = client.exportCache();
+await saveToDatabase(cache);
+
+// Later, restore from cache
+const savedCache = await loadFromDatabase();
+const restoredClient = CalDAVClient.createFromCache(
+  {
+    baseUrl: 'https://caldav.icloud.com',
+    auth: {
+      type: 'basic',
+      username: 'your-apple-id@icloud.com',
+      password: 'app-specific-password'
+    }
+  },
+  savedCache
+);
+```
+
+## Type Definitions
+
+### CalDAVOptions
+
+```typescript
+interface CalDAVOptions {
+  baseUrl: string;
+  auth: AuthOptions;
+  requestTimeout?: number;
+  logRequests?: boolean;
+  prodId?: string;
+  headers?: AxiosHeaders;
+}
+```
+
+### AuthOptions
+
+```typescript
+type AuthOptions =
+  | { type: "basic"; username: string; password: string }
+  | { type: "oauth"; accessToken: string };
+```
+
+### CalDAVClientCache
+
+```typescript
+interface CalDAVClientCache {
+  userPrincipal: string;
+  calendarHome: string;
+  prodId?: string;
+}
+```

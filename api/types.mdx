@@ -1,0 +1,431 @@
+---
+title: Types
+description: TypeScript type definitions for ts-caldav
+---
+
+## Client Configuration
+
+### CalDAVOptions
+
+Configuration options for the CalDAV client.
+
+<ParamField path="baseUrl" type="string" required>
+  The base URL of the CalDAV server (e.g., `https://caldav.example.com`)
+</ParamField>
+
+<ParamField path="auth" type="AuthOptions" required>
+  Authentication credentials for the CalDAV server
+</ParamField>
+
+<ParamField path="requestTimeout" type="number">
+  Timeout for HTTP requests in milliseconds
+</ParamField>
+
+<ParamField path="logRequests" type="boolean">
+  Enable logging of HTTP requests for debugging
+</ParamField>
+
+<ParamField path="prodId" type="string">
+  Product identifier for generated iCalendar data (PRODID property)
+</ParamField>
+
+<ParamField path="headers" type="AxiosHeaders">
+  Additional HTTP headers to include in all requests
+</ParamField>
+
+### AuthOptions
+
+Authentication configuration for the CalDAV server. Supports basic authentication and OAuth.
+
+<Tabs>
+  <Tab title="Basic Auth">
+    <ParamField path="type" type="'basic'" required>
+      Authentication type
+    </ParamField>
+
+    <ParamField path="username" type="string" required>
+      Username for basic authentication
+    </ParamField>
+
+    <ParamField path="password" type="string" required>
+      Password for basic authentication
+    </ParamField>
+  </Tab>
+
+  <Tab title="OAuth">
+    <ParamField path="type" type="'oauth'" required>
+      Authentication type
+    </ParamField>
+
+    <ParamField path="accessToken" type="string" required>
+      OAuth access token
+    </ParamField>
+  </Tab>
+</Tabs>
+
+## Calendar Types
+
+### Calendar
+
+Represents a CalDAV calendar resource.
+
+<ResponseField name="displayName" type="string" required>
+  Human-readable name of the calendar
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  URL of the calendar resource
+</ResponseField>
+
+<ResponseField name="ctag" type="string">
+  Calendar collection tag for synchronization
+</ResponseField>
+
+<ResponseField name="supportedComponents" type="SupportedComponent[]" required>
+  Array of component types supported by this calendar
+</ResponseField>
+
+<ResponseField name="color" type="string">
+  Color code for the calendar (e.g., `#FF5733`)
+</ResponseField>
+
+### SupportedComponent
+
+Component types that can be stored in a CalDAV calendar.
+
+```typescript
+type SupportedComponent = 
+  | "VEVENT"      // Calendar events
+  | "VTODO"       // Todo items
+  | "VJOURNAL"    // Journal entries
+  | "VFREEBUSY"   // Free/busy time
+  | "VTIMEZONE";  // Timezone definitions
+```
+
+## Event Types
+
+### Event
+
+Represents a calendar event.
+
+<ResponseField name="uid" type="string" required>
+  Unique identifier for the event
+</ResponseField>
+
+<ResponseField name="summary" type="string" required>
+  Title or summary of the event
+</ResponseField>
+
+<ResponseField name="start" type="Date" required>
+  Start date and time of the event
+</ResponseField>
+
+<ResponseField name="end" type="Date" required>
+  End date and time of the event
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Detailed description of the event
+</ResponseField>
+
+<ResponseField name="location" type="string">
+  Location where the event takes place
+</ResponseField>
+
+<ResponseField name="status" type="EventStatus">
+  Status of the event (TENTATIVE, CONFIRMED, or CANCELLED)
+</ResponseField>
+
+<ResponseField name="etag" type="string" required>
+  Entity tag for concurrency control
+</ResponseField>
+
+<ResponseField name="href" type="string" required>
+  URL reference to the event resource
+</ResponseField>
+
+<ResponseField name="wholeDay" type="boolean">
+  Whether this is an all-day event
+</ResponseField>
+
+<ResponseField name="recurrenceRule" type="RecurrenceRule">
+  Recurrence rule for repeating events
+</ResponseField>
+
+<ResponseField name="startTzid" type="string">
+  Timezone identifier for the start time (e.g., `America/New_York`)
+</ResponseField>
+
+<ResponseField name="endTzid" type="string">
+  Timezone identifier for the end time (e.g., `America/New_York`)
+</ResponseField>
+
+<ResponseField name="alarms" type="Alarm[]">
+  Array of alarm/reminder definitions
+</ResponseField>
+
+### EventStatus
+
+Status values for calendar events.
+
+```typescript
+type EventStatus = "TENTATIVE" | "CONFIRMED" | "CANCELLED";
+```
+
+### EventRef
+
+Reference to an event resource with metadata.
+
+<ResponseField name="href" type="string" required>
+  URL reference to the event resource
+</ResponseField>
+
+<ResponseField name="etag" type="string" required>
+  Entity tag for version tracking
+</ResponseField>
+
+## Todo Types
+
+### Todo
+
+Represents a todo/task item.
+
+<ResponseField name="uid" type="string" required>
+  Unique identifier for the todo
+</ResponseField>
+
+<ResponseField name="summary" type="string" required>
+  Title or summary of the todo
+</ResponseField>
+
+<ResponseField name="start" type="Date">
+  Start date and time for the todo
+</ResponseField>
+
+<ResponseField name="due" type="Date">
+  Due date and time for the todo
+</ResponseField>
+
+<ResponseField name="completed" type="Date">
+  Date and time when the todo was completed
+</ResponseField>
+
+<ResponseField name="status" type="TodoStatus">
+  Current status of the todo
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Detailed description of the todo
+</ResponseField>
+
+<ResponseField name="location" type="string">
+  Location associated with the todo
+</ResponseField>
+
+<ResponseField name="etag" type="string" required>
+  Entity tag for concurrency control
+</ResponseField>
+
+<ResponseField name="href" type="string" required>
+  URL reference to the todo resource
+</ResponseField>
+
+<ResponseField name="alarms" type="Alarm[]">
+  Array of alarm/reminder definitions
+</ResponseField>
+
+<ResponseField name="sortOrder" type="number">
+  Custom sort order for the todo
+</ResponseField>
+
+### TodoStatus
+
+Status values for todo items.
+
+```typescript
+type TodoStatus = "NEEDS-ACTION" | "COMPLETED" | "IN-PROCESS" | "CANCELLED";
+```
+
+### TodoRef
+
+Reference to a todo resource with metadata. Alias of `EventRef`.
+
+<ResponseField name="href" type="string" required>
+  URL reference to the todo resource
+</ResponseField>
+
+<ResponseField name="etag" type="string" required>
+  Entity tag for version tracking
+</ResponseField>
+
+## Recurring Events
+
+### RecurrenceRule
+
+Defines recurrence patterns for repeating events.
+
+<ParamField path="freq" type="'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'">
+  Frequency of recurrence
+</ParamField>
+
+<ParamField path="interval" type="number">
+  Interval between recurrences (e.g., every 2 weeks with `freq: "WEEKLY"` and `interval: 2`)
+</ParamField>
+
+<ParamField path="count" type="number">
+  Number of occurrences before the recurrence ends
+</ParamField>
+
+<ParamField path="until" type="Date">
+  Date when the recurrence ends
+</ParamField>
+
+<ParamField path="wkst" type="string">
+  Week start day (e.g., `MO` for Monday)
+</ParamField>
+
+<ParamField path="byday" type="string[]">
+  Days of the week (e.g., `["MO", "WE", "FR"]`)
+</ParamField>
+
+<ParamField path="bymonthday" type="number[]">
+  Days of the month (e.g., `[1, 15]` for the 1st and 15th)
+</ParamField>
+
+<ParamField path="bymonth" type="number[]">
+  Months of the year (e.g., `[1, 6, 12]` for January, June, December)
+</ParamField>
+
+### Alarm
+
+Defines reminders for events and todos. Three variants are supported.
+
+<Tabs>
+  <Tab title="Display Alarm">
+    <ParamField path="action" type="'DISPLAY'" required>
+      Alarm action type
+    </ParamField>
+
+    <ParamField path="trigger" type="string" required>
+      When the alarm triggers (e.g., `-PT15M` for 15 minutes before)
+    </ParamField>
+
+    <ParamField path="description" type="string">
+      Description text to display
+    </ParamField>
+  </Tab>
+
+  <Tab title="Email Alarm">
+    <ParamField path="action" type="'EMAIL'" required>
+      Alarm action type
+    </ParamField>
+
+    <ParamField path="trigger" type="string" required>
+      When the alarm triggers (e.g., `-PT1H` for 1 hour before)
+    </ParamField>
+
+    <ParamField path="description" type="string">
+      Email body text
+    </ParamField>
+
+    <ParamField path="summary" type="string">
+      Email subject line
+    </ParamField>
+
+    <ParamField path="attendees" type="string[]" required>
+      Email addresses to send the alarm to
+    </ParamField>
+  </Tab>
+
+  <Tab title="Audio Alarm">
+    <ParamField path="action" type="'AUDIO'" required>
+      Alarm action type
+    </ParamField>
+
+    <ParamField path="trigger" type="string" required>
+      When the alarm triggers (e.g., `-PT5M` for 5 minutes before)
+    </ParamField>
+  </Tab>
+</Tabs>
+
+## Synchronization
+
+### SyncChangesResult
+
+Result of synchronizing calendar event changes.
+
+<ResponseField name="changed" type="boolean" required>
+  Whether any changes were detected
+</ResponseField>
+
+<ResponseField name="newCtag" type="string" required>
+  Updated calendar collection tag
+</ResponseField>
+
+<ResponseField name="newEvents" type="string[]" required>
+  Array of UIDs for newly created events
+</ResponseField>
+
+<ResponseField name="updatedEvents" type="string[]" required>
+  Array of UIDs for updated events
+</ResponseField>
+
+<ResponseField name="deletedEvents" type="string[]" required>
+  Array of UIDs for deleted events
+</ResponseField>
+
+### SyncTodosResult
+
+Result of synchronizing calendar todo changes.
+
+<ResponseField name="changed" type="boolean" required>
+  Whether any changes were detected
+</ResponseField>
+
+<ResponseField name="newCtag" type="string" required>
+  Updated calendar collection tag
+</ResponseField>
+
+<ResponseField name="newTodos" type="string[]" required>
+  Array of UIDs for newly created todos
+</ResponseField>
+
+<ResponseField name="updatedTodos" type="string[]" required>
+  Array of UIDs for updated todos
+</ResponseField>
+
+<ResponseField name="deletedTodos" type="string[]" required>
+  Array of UIDs for deleted todos
+</ResponseField>
+
+## Caching
+
+### CalDAVClientCache
+
+Cached CalDAV server discovery information.
+
+<ResponseField name="userPrincipal" type="string" required>
+  URL of the user's principal resource
+</ResponseField>
+
+<ResponseField name="calendarHome" type="string" required>
+  URL of the user's calendar home collection
+</ResponseField>
+
+<ResponseField name="prodId" type="string">
+  Product identifier used for this cache
+</ResponseField>
+
+## Timezone
+
+### VTimezone
+
+Timezone definition from iCalendar data.
+
+<ResponseField name="tzid" type="string" required>
+  Timezone identifier (e.g., `America/New_York`)
+</ResponseField>
+
+<ResponseField name="raw" type="string" required>
+  Raw VTIMEZONE component data in iCalendar format
+</ResponseField>
